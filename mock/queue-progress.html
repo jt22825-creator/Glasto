@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festival Tickets – Queue (MOCK)</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="site-header">Festival Tickets <small>mock site</small></div>
+<main>
+  <div class="mock-note">MOCK PAGE 4 — queue progressing. The position falls every second, then this page
+    redirects itself to the booking page (like a real queue does). <code>?start=20</code> sets the starting position;
+    <code>?stay=1</code> stops the redirect.</div>
+  <h1>You are now in line</h1>
+  <div id="MainPart_divProgressbar" class="progress"><div id="bar"></div></div>
+  <p>Your number in line: <span class="big" id="position"></span></p>
+  <p>Estimated wait time: <span id="eta"></span></p>
+  <p>Please have your registration number and postcode ready.</p>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const start = Number(params.get('start') || 20);
+  const stay = params.get('stay') === '1';
+  let pos = start;
+  function render() {
+    document.getElementById('position').textContent = pos;
+    document.getElementById('eta').textContent = pos + ' seconds';
+    document.getElementById('bar').style.width = Math.round(((start - pos) / start) * 100) + '%';
+  }
+  render();
+  const timer = setInterval(() => {
+    pos = Math.max(0, pos - 1);
+    render();
+    if (pos === 0 && !stay) {
+      clearInterval(timer);
+      location.href = 'booking.html';
+    }
+  }, 1000);
+</script>
+</body>
+</html>

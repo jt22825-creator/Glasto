@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mock ticket pages</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="site-header">Mock ticket pages <small>for testing the helper — no real ticket site involved</small></div>
+<main>
+  <p>With the userscript installed, open each page in its own tab and check the helper badge.</p>
+  <ol>
+    <li><a href="presale.html">Pre-sale countdown</a> → expect <b>WAITING</b>
+      (<a href="presale.html?queueIn=5">moves to the queue after 5 s</a>)</li>
+    <li><a href="queue.html">Queue page</a> → <b>IN QUEUE</b>, refresh protection on</li>
+    <li><a href="long-queue.html">Long queue</a> → <b>IN QUEUE</b></li>
+    <li><a href="queue-progress.html?start=15">Queue progressing</a> → <b>IN QUEUE</b>, then redirects to booking → <b>BOOKING AVAILABLE</b> + alarm</li>
+    <li><a href="booking.html">Booking page</a> → <b>BOOKING AVAILABLE</b></li>
+    <li><a href="unknown.html">Unrecognised page</a> → <b>UNKNOWN</b></li>
+  </ol>
+  <p><a href="test-runner.html">Open the test runner</a> to check detection, alarm, notifications, countdown, heartbeat, group notifications and copy buttons in this browser.</p>
+</main>
+</body>
+</html>

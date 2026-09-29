@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festival Tickets – Book (MOCK)</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="site-header">Festival Tickets <small>mock site</small></div>
+<main>
+  <div class="mock-note">MOCK PAGE 5 — booking page. The form goes nowhere; nothing is ever submitted.</div>
+  <h1>Enter registration details</h1>
+  <p>You have 10 minutes to complete your booking.</p>
+  <form id="booking-form" onsubmit="event.preventDefault(); document.getElementById('result').textContent = 'Mock only: nothing was submitted.';">
+    <div class="row">
+      <label for="registrationNumber1">Lead booker registration number</label>
+      <input id="registrationNumber1" name="registrationNumber1" autocomplete="off">
+      <label for="postcode1">Postcode</label>
+      <input id="postcode1" name="postcode1" autocomplete="off">
+    </div>
+    <div class="row">
+      <label for="registrationNumber2">Registration number (guest 2)</label>
+      <input id="registrationNumber2" name="registrationNumber2" autocomplete="off">
+      <label for="postcode2">Postcode</label>
+      <input id="postcode2" name="postcode2" autocomplete="off">
+    </div>
+    <button type="submit">Proceed</button>
+    <p id="result"></p>
+  </form>
+</main>
+</body>
+</html>
