@@ -1,0 +1,15 @@
+/* Deliberately plain styling: these pages imitate a generic ticket site. */
+body { font: 16px/1.5 Georgia, serif; margin: 0; background: #f4f1ea; color: #222; }
+.site-header { background: #2d4a2b; color: #fff; padding: 14px 24px; font: 700 20px/1 system-ui, sans-serif; }
+.site-header small { font-weight: 400; opacity: .8; margin-left: 8px; }
+main { max-width: 720px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.mock-note { font: 13px system-ui, sans-serif; background: #fff8d6; border: 1px dashed #b39200;
+  padding: 6px 10px; border-radius: 6px; margin-bottom: 18px; }
+.progress { height: 18px; background: #e3e3e3; border-radius: 9px; overflow: hidden; margin: 12px 0; }
+.progress > div { height: 100%; background: #3c7a37; width: 5%; transition: width .5s; }
+.big { font-size: 32px; font-weight: 700; }
+label { display: block; margin: 12px 0 4px; font-weight: 600; }
+input { font: inherit; padding: 6px 8px; width: 260px; }
+button { font: inherit; padding: 8px 18px; margin-top: 16px; }
+.row { border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px; }

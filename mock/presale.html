@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festival Tickets – Waiting room (MOCK)</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="site-header">Festival Tickets <small>mock site</small></div>
+<main>
+  <div class="mock-note">MOCK PAGE 1 — pre-sale countdown. Add <code>?queueIn=10</code> to be moved to the queue after 10 seconds, like a real waiting room.</div>
+  <h1>Welcome to the waiting room</h1>
+  <p>The sale has not started yet. Tickets go on sale in <span class="big" id="countdown">--:--</span></p>
+  <p>When the sale starts you will be randomly assigned a place in the queue. Stay on this page.</p>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const queueIn = Number(params.get('queueIn') || 0);
+  const target = Date.now() + (queueIn || 600) * 1000;
+  function tick() {
+    const s = Math.max(0, Math.round((target - Date.now()) / 1000));
+    document.getElementById('countdown').textContent =
+      String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    if (queueIn && s === 0) location.href = 'queue-progress.html' + location.search.replace(/queueIn=\d+&?/, '');
+  }
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

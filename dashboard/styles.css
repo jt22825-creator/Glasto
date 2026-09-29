@@ -1,0 +1,117 @@
+:root {
+  --bg: #f5f5f2;
+  --card: #ffffff;
+  --text: #1b1b1b;
+  --muted: #626262;
+  --border: #dcdcd6;
+  --accent: #2d5a27;
+  --waiting: #3867d6;
+  --queue: #c47d00;
+  --booking: #1e9e45;
+  --unknown: #777;
+  --danger: #b00020;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151614;
+    --card: #1f211e;
+    --text: #ececea;
+    --muted: #a3a39e;
+    --border: #3a3c37;
+    --accent: #7cc36f;
+    --unknown: #999;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 17px; margin: 0 0 10px; }
+h3 { font-size: 14px; margin: 16px 0 6px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.error { color: var(--danger); }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+.topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+main { max-width: 1400px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+footer { text-align: center; padding: 16px; }
+
+.btn { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-danger { color: var(--danger); }
+.btn-light { background: #fff; color: #111; font-weight: 700; }
+.btn-small { padding: 2px 8px; font-size: 12px; }
+.btn.on { outline: 3px solid var(--text); font-weight: 700; }
+
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--bg);
+  border: 1px solid var(--border); font-weight: 600; white-space: nowrap; }
+.pill-on { background: var(--booking); border-color: var(--booking); color: #fff; }
+.pill-off { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+.form { display: grid; gap: 8px; }
+.form label, label { display: grid; gap: 3px; font-size: 13px; font-weight: 600; }
+label.inline, .inline { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+input, textarea { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); width: 100%; min-width: 0; }
+input[type=checkbox] { width: auto; }
+textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+fieldset { border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 8px; }
+
+.countdowns { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.countdown { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.countdown .label { font-weight: 700; }
+.countdown .when { color: var(--muted); font-size: 13px; }
+.countdown .remaining { font: 700 30px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 4px; }
+.countdown.soon { border-color: var(--queue); box-shadow: 0 0 0 2px var(--queue) inset; }
+.countdown.live { border-color: var(--booking); box-shadow: 0 0 0 2px var(--booking) inset; }
+.countdown.ended { opacity: .55; }
+
+.summary { display: flex; gap: 6px; flex-wrap: wrap; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+tr.st-booking { background: color-mix(in srgb, var(--booking) 16%, transparent); }
+.status { font-weight: 700; padding: 2px 8px; border-radius: 6px; color: #fff; }
+.status.waiting { background: var(--waiting); }
+.status.in_queue { background: var(--queue); }
+.status.booking { background: var(--booking); }
+.status.unknown { background: var(--unknown); }
+.health::before { content: "●"; margin-right: 4px; }
+.health.live::before { color: var(--booking); }
+.health.stale::before { color: var(--queue); }
+.health.lost::before, .health.never::before { color: var(--danger); }
+
+.my-session { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.my-session .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+.field-group { border-top: 1px solid var(--border); padding: 8px 0; }
+.field-group h4 { margin: 0 0 4px; font-size: 14px; }
+.field-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.field-row .label { color: var(--muted); min-width: 110px; font-size: 13px; }
+.field-row .value { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; }
+
+.events { max-height: 260px; overflow: auto; padding-left: 18px; }
+
+.banner { background: var(--booking); color: #fff; padding: 18px 16px; text-align: center; animation: flash 1s steps(2) infinite; }
+.banner-text { font: 800 clamp(22px, 5vw, 40px)/1.1 system-ui, sans-serif; }
+.banner-sub { margin: 6px 0 10px; }
+.banner.acked { animation: none; }
+@keyframes flash { 0% { background: var(--booking); } 50% { background: #c1121f; } }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111; color: #fff;
+  padding: 10px 16px; border-radius: 8px; z-index: 20; max-width: calc(100vw - 32px); font-weight: 600; }
+
+@media (max-width: 640px) {
+  main { padding: 16px 16px; }
+  .countdown .remaining { font-size: 24px; }
+}

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Group Queue Dashboard</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1 id="group-name">Group dashboard</h1>
+    <div class="muted small">Coordination only — every ticket-site session is opened and operated by a person.</div>
+  </div>
+  <div class="topbar-right">
+    <span id="clock" class="mono"></span>
+    <span id="conn" class="pill pill-off" title="Live connection to the dashboard server">offline</span>
+    <button id="enable-alerts" class="btn">Enable sound &amp; notifications</button>
+  </div>
+</header>
+
+<div id="booking-banner" class="banner" hidden>
+  <div id="booking-banner-text" class="banner-text"></div>
+  <div id="booking-banner-sub" class="banner-sub"></div>
+  <button id="ack-alarm" class="btn btn-light">Silence alarm</button>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<main>
+  <section class="card">
+    <h2>Sale countdowns</h2>
+    <div id="countdowns" class="countdowns"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Sessions</h2>
+      <div id="summary" class="summary"></div>
+    </div>
+    <div class="table-wrap">
+      <table id="sessions">
+        <thead>
+          <tr>
+            <th>ID</th><th>Member</th><th>Device</th><th>Connection</th><th>VPN / location</th><th>Started</th>
+            <th>Status</th><th>In queue since</th><th>Booking detected</th><th>Last heartbeat</th><th>Available to check out</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="no-sessions" class="muted">No sessions yet. Register one below, or set this dashboard's URL in the userscript's Setup tab.</p>
+  </section>
+
+  <div class="grid-2">
+    <section class="card">
+      <h2>Register a session</h2>
+      <p class="muted small">Use this for a device you're operating yourself. Devices running the userscript register automatically.</p>
+      <form id="register-form" class="form">
+        <label>Member name <input name="member" required placeholder="Alex"></label>
+        <label>Device name <input name="device" placeholder="iPhone"></label>
+        <label>Connection label <input name="connection" placeholder="Mobile data (EE)"></label>
+        <label>VPN / location label (optional) <input name="vpn" placeholder="none"></label>
+        <button class="btn btn-primary" type="submit">Register</button>
+      </form>
+      <h3>Sessions registered from this browser</h3>
+      <p class="muted small">Without the userscript, update status by hand. This page sends a heartbeat for them every 10 seconds while it stays open.</p>
+      <div id="my-sessions"></div>
+    </section>
+
+    <section class="card">
+      <h2>Checkout details <span class="pill">only on this device</span></h2>
+      <p class="muted small">Stored in this browser's local storage and never sent to the server. Copy buttons put a value on your clipboard; you paste it into the ticket site yourself.</p>
+      <div id="checkout-fields"></div>
+      <label class="inline small"><input type="checkbox" id="reveal"> Show full values</label>
+      <details>
+        <summary>Edit checkout details</summary>
+        <textarea id="checkout-text" rows="10" spellcheck="false"></textarea>
+        <div id="checkout-errors" class="error small"></div>
+        <button id="save-checkout" class="btn">Save on this device</button>
+        <button id="clear-checkout" class="btn btn-danger">Delete from this device</button>
+      </details>
+    </section>
+  </div>
+
+  <div class="grid-2">
+    <section class="card">
+      <h2>Group settings</h2>
+      <form id="config-form" class="form">
+        <label>Group name <input name="groupName"></label>
+        <label>Sale times (one per line)
+          <textarea name="salesText" rows="4" spellcheck="false" placeholder="Coach sale: Thursday 18:00&#10;General sale: 2026-10-04 09:00"></textarea>
+        </label>
+        <label>Timezone <input name="timezone" placeholder="Europe/London" list="tz-list"></label>
+        <datalist id="tz-list">
+          <option value="Europe/London"><option value="Europe/Dublin"><option value="Europe/Paris">
+          <option value="America/New_York"><option value="America/Los_Angeles"><option value="Australia/Sydney"><option value="UTC">
+        </datalist>
+        <label>Dashboard link for notifications (the URL members open)
+          <input name="dashboardUrl" placeholder="http://192.168.1.20:8787/">
+        </label>
+        <fieldset>
+          <legend>Group notifications (ntfy)</legend>
+          <label class="inline"><input type="checkbox" name="ntfyEnabled"> Send group notifications</label>
+          <label>ntfy server <input name="ntfyServer" placeholder="https://ntfy.sh"></label>
+          <label>Topic (hard to guess) <input name="ntfyTopic" placeholder="our-group-x7k2p9"></label>
+          <label>Access token (optional, for protected topics) <input name="ntfyToken" type="password" autocomplete="off"></label>
+          <label class="inline"><input type="checkbox" name="notifySaleAlerts"> Also notify 5 min / 1 min before and at each sale start</label>
+        </fieldset>
+        <div id="config-errors" class="error small"></div>
+        <button class="btn btn-primary" type="submit">Save settings</button>
+        <button class="btn" type="button" id="test-ntfy">Send test notification</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Set up a device</h2>
+      <ol class="small">
+        <li>Install Tampermonkey in the browser you'll queue in.</li>
+        <li>Open <a id="userscript-link" href="/userscript/ticket-helper.user.js">the userscript</a> — Tampermonkey offers to install it.</li>
+        <li>Open the ticket site yourself. Click the helper badge → <b>Setup</b>. Enter your name, device and connection labels.</li>
+        <li>Paste this dashboard URL: <code id="dash-url"></code> <button class="btn btn-small" id="copy-dash-url">Copy</button></li>
+        <li id="key-step" hidden>Paste the group key you were given.</li>
+        <li>Click <b>Test dashboard</b>. Your session appears in the table above.</li>
+      </ol>
+      <p class="small">Try it first on the <a href="/mock/">mock ticket pages</a> or the <a href="/mock/test-runner.html">test runner</a>.</p>
+      <h3>Group key</h3>
+      <div class="inline">
+        <input id="group-key" type="password" placeholder="Only if the server was started with GROUP_KEY">
+        <button class="btn" id="save-key">Use key</button>
+      </div>
+      <h3>Group activity</h3>
+      <ol id="events" class="events small"></ol>
+    </section>
+  </div>
+</main>
+
+<footer class="muted small">
+  This dashboard never controls or contacts the ticket site. It does not open browser sessions, switch networks or submit orders.
+</footer>
+
+<script src="/shared/session.js"></script>
+<script src="/shared/countdown.js"></script>
+<script src="/shared/checkout-fields.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helper test runner</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  main { max-width: 900px; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }
+  .pass { color: #1e7e34; font-weight: 700; } .fail { color: #b00020; font-weight: 700; } .pending { color: #777; }
+  iframe { display: none; }
+  button { margin: 0 6px 6px 0; padding: 4px 10px; font-size: 14px; }
+  code { font-size: 13px; }
+  #summary { font-size: 18px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="site-header">Helper test runner <small>mock pages only — never the real ticket site</small></div>
+<main>
+  <p>Automatic checks run on load. Checks marked <i>manual</i> need you to click and confirm, because browsers only allow
+    sound, notifications and clipboard access after a click. Refresh protection needs the userscript: open
+    <a href="queue.html" target="_blank">queue.html</a> in a new tab and press F5 / Ctrl+R / Cmd+R — the badge should say
+    “Refresh blocked”.</p>
+  <p id="summary"></p>
+  <table>
+    <thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <h3>Manual checks</h3>
+  <button id="t-alarm">Play alarm (2 s)</button>
+  <button id="t-notify">Show desktop notification</button>
+  <button id="t-copy">Copy sample value</button>
+  <input id="paste" placeholder="paste here (Ctrl/Cmd+V)" style="width:200px">
+  <button id="t-countdown">Start 70 s test countdown</button>
+  <button id="t-group">Send group test notification (needs ntfy set up in the dashboard)</button>
+  <p id="countdown-out" class="big"></p>
+</main>
+<script src="/shared/detection.js"></script>
+<script src="/shared/countdown.js"></script>
+<script src="/shared/session.js"></script>
+<script src="/shared/checkout-fields.js"></script>
+<script>
+(function () {
+  const D = TicketHelperDetection, C = TicketHelperCountdown, S = TicketHelperSession, K = TicketHelperCheckout;
+  const rows = {};
+  function result(name, status, detail) {
+    let tr = rows[name];
+    if (!tr) {
+      tr = rows[name] = document.createElement('tr');
+      tr.innerHTML = '<td></td><td></td><td></td>';
+      tr.dataset.check = name;
+      document.getElementById('results').appendChild(tr);
+    }
+    tr.cells[0].textContent = name;
+    tr.cells[1].textContent = status.toUpperCase();
+    tr.cells[1].className = status;
+    tr.cells[2].textContent = detail || '';
+    const all = Object.values(rows).map((r) => r.cells[1].className);
+    const pass = all.filter((c) => c === 'pass').length, fail = all.filter((c) => c === 'fail').length;
+    const sum = document.getElementById('summary');
+    sum.textContent = `${pass} passed, ${fail} failed, ${all.length - pass - fail} pending`;
+    sum.dataset.fail = fail;
+    sum.dataset.pending = all.length - pass - fail;
+  }
+
+  // ---- detection against every mock page (loaded in hidden same-origin iframes)
+  const PAGES = [
+    ['presale.html', 'waiting'],
+    ['queue.html', 'in_queue'],
+    ['long-queue.html', 'in_queue'],
+    ['queue-progress.html?stay=1', 'in_queue'],
+    ['booking.html', 'booking'],
+    ['unknown.html', 'unknown'],
+  ];
+  function detectPage(src) {
+    return new Promise((resolve) => {
+      const f = document.createElement('iframe');
+      f.src = src;
+      f.onload = () => {
+        // innerText needs layout; hidden iframes still lay out with display:none on some browsers,
+        // so fall back to textContent.
+        const doc = f.contentDocument;
+        const snap = D.snapshotFromDocument(doc);
+        if (!snap.text) snap.text = doc.body.textContent;
+        const r = D.detectState(snap);
+        f.remove();
+        resolve(r);
+      };
+      document.body.appendChild(f);
+    });
+  }
+  (async () => {
+    for (const [page, expected] of PAGES) {
+      const r = await detectPage(page);
+      result(`Detection: ${page}`, r.state === expected ? 'pass' : 'fail', `expected ${D.STATE_LABELS[expected]}, got ${r.label} (${r.matched.join(', ') || 'no indicators'})`);
+    }
+  })();
+
+  // ---- countdown parsing
+  (function () {
+    const now = Date.UTC(2026, 8, 29, 12, 0);
+    const { sales, errors } = C.parseSalesConfig('Coach sale: Thursday 18:00\nGeneral sale: 2026-10-04 09:00', { timezone: 'Europe/London', now });
+    const ok = !errors.length && sales[0].at === Date.UTC(2026, 9, 1, 17, 0) && sales[1].at === Date.UTC(2026, 9, 4, 8, 0);
+    result('Countdown: parse sale times with timezone', ok ? 'pass' : 'fail', sales.map((s) => `${s.label} → ${new Date(s.at).toISOString()}`).join('; ') + errors.join('; '));
+  })();
+
+  // ---- heartbeat round trip against this dashboard server
+  (async () => {
+    const name = 'Heartbeat: register, beat, read back, remove';
+    result(name, 'pending', 'contacting dashboard server…');
+    const key = (() => { try { return JSON.parse(localStorage.getItem('dash:groupKey') || '""'); } catch (_) { return ''; } })();
+    const h = { 'Content-Type': 'application/json' };
+    if (key) h['X-Group-Key'] = key;
+    try {
+      const id = S.newSessionId();
+      let r = await fetch(`/api/sessions/${id}/heartbeat`, { method: 'POST', headers: h, body: JSON.stringify({ member: 'Test runner', device: 'Browser', status: 'in_queue', source: 'userscript' }) });
+      if (!r.ok) throw new Error('heartbeat HTTP ' + r.status);
+      r = await fetch('/api/state', { headers: h });
+      const st = await r.json();
+      const s = st.sessions.find((x) => x.id === id);
+      await fetch(`/api/sessions/${id}`, { method: 'DELETE', headers: h });
+      result(name, s && s.health === 'live' && s.status === 'in_queue' ? 'pass' : 'fail', s ? `${id}: ${s.status}, ${s.health}` : 'session missing');
+    } catch (e) {
+      result(name, 'fail', e.message + ' (is this page served by `npm start`?)');
+    }
+  })();
+
+  // ---- manual checks
+  result('Alarm (manual)', 'pending', 'click "Play alarm"');
+  result('Desktop notification (manual)', 'pending', 'click "Show desktop notification"');
+  result('Copy button (manual)', 'pending', 'click "Copy sample value", then paste into the box');
+  result('Countdown warnings (manual)', 'pending', 'click "Start 70 s test countdown" and wait');
+  result('Group notification (manual)', 'pending', 'click "Send group test notification"');
+
+  let ctx;
+  document.getElementById('t-alarm').onclick = () => {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    let n = 0, hi = false;
+    const t = setInterval(() => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'square'; o.frequency.value = (hi = !hi) ? 988 : 740; g.gain.value = 0.2;
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.28);
+      if (++n >= 5) { clearInterval(t); result('Alarm (manual)', confirm('Did you hear the alarm?') ? 'pass' : 'fail', `AudioContext state: ${ctx.state}`); }
+    }, 400);
+  };
+  document.getElementById('t-notify').onclick = async () => {
+    if (!('Notification' in window)) return result('Desktop notification (manual)', 'fail', 'Notification API not available');
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') return result('Desktop notification (manual)', 'fail', 'permission ' + p);
+    new Notification('Ticket helper test', { body: 'Desktop notifications work.' });
+    result('Desktop notification (manual)', 'pass', 'notification shown (check your OS notification settings if you did not see it)');
+  };
+  const SAMPLE = 'REG-' + Math.floor(Math.random() * 1e6);
+  document.getElementById('t-copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(SAMPLE); } catch (e) { return result('Copy button (manual)', 'fail', e.message); }
+    result('Copy button (manual)', 'pending', `copied ${SAMPLE} — now paste it into the box`);
+  };
+  document.getElementById('paste').addEventListener('input', (e) => {
+    result('Copy button (manual)', e.target.value.trim() === SAMPLE ? 'pass' : 'fail', `pasted "${e.target.value}"`);
+  });
+  document.getElementById('t-countdown').onclick = () => {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const sale = { key: 'test', label: 'Test sale', at: Date.now() + 70 * 1000 };
+    const fired = {}; const seen = [];
+    // Compress time: 70 real seconds play out as the last 6 simulated minutes.
+    const SCALE = 360 / 70;
+    const t = setInterval(() => {
+      const now = sale.at - (sale.at - Date.now()) * SCALE;
+      document.getElementById('countdown-out').textContent = 'Test sale in ' + C.formatDuration(Math.max(0, sale.at - now)) + ' (simulated)';
+      for (const a of C.dueAlerts([sale], now, fired)) {
+        fired[a.id] = true; seen.push(a.kind);
+        const o = ctx.createOscillator(); o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.2);
+      }
+      if (seen.includes('start')) {
+        clearInterval(t);
+        result('Countdown warnings (manual)', seen.join(',') === '5min,1min,start' ? 'pass' : 'fail', 'alerts fired: ' + seen.join(', '));
+      }
+    }, 250);
+  };
+  document.getElementById('t-group').onclick = async () => {
+    const key = (() => { try { return JSON.parse(localStorage.getItem('dash:groupKey') || '""'); } catch (_) { return ''; } })();
+    const r = await fetch('/api/notify/test', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, key ? { 'X-Group-Key': key } : {}), body: '{"member":"the test runner"}' });
+    const body = await r.json().catch(() => ({}));
+    result('Group notification (manual)', r.ok ? 'pass' : 'fail', r.ok ? 'sent — check the ntfy app' : body.reason || body.error || 'HTTP ' + r.status);
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "ticket-queue-helper",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Coordinate a group's manually operated ticket-queue sessions: userscript status/alarm/refresh guard, group dashboard, ntfy alerts. No checkout automation.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server/server.js",
+    "build": "node scripts/build-userscript.js",
+    "test": "node scripts/build-userscript.js --check && node --test tests/*.test.js",
+    "test:e2e": "node scripts/build-userscript.js --check && node --test --test-concurrency=1 tests/e2e/*.test.js",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
