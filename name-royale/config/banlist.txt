@@ -1,0 +1,3 @@
+# One entry per line: a YouTube channel ID (starts with UC) or an exact display name.
+# Lines starting with # are ignored. Banned viewers' commands are dropped silently.
+# The server re-reads this file while running, so you can edit it mid-stream.

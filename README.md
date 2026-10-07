@@ -33,3 +33,8 @@ It never sends requests to See Tickets and never fills in or submits forms. It o
 
 ## Caveat
 The script works out whether you're in the queue or on the booking page by matching the page's text. Those patterns are guesses based on past sales. Check that it says "In the queue" once you join. If it doesn't, keep an eye on the tab yourself.
+
+---
+
+## Also in this repo
+- [`name-royale/`](name-royale/): **Name Royale**, a "chat plays" battle royale game for YouTube live streams. See its README.

@@ -1,0 +1,110 @@
+// Settings shared by the server and the game. The server reads
+// config/game.config.json, fills in anything missing from DEFAULT_CONFIG,
+// and sends the result to the game when it connects.
+
+export interface GameConfig {
+  round: {
+    /** Seconds viewers have to type !join before the fight starts. */
+    joinWindowSeconds: number;
+    /** Hard cap on the fight phase. If time runs out, the ball nearest the centre wins. */
+    maxFightSeconds: number;
+    /** How long the podium screen stays up. */
+    winnerScreenSeconds: number;
+    /** Countdown shown after the podium, before the next join window opens. */
+    countdownSeconds: number;
+    /** Most balls allowed in one round. Later joiners wait for the next round. */
+    maxPlayers: number;
+  };
+  arena: {
+    /** Seconds of fighting before the edge starts to shrink. */
+    shrinkDelaySeconds: number;
+    /** Seconds for the edge to shrink from full size to its smallest size. */
+    shrinkDurationSeconds: number;
+    /** Smallest arena size, as a fraction of the starting size (0 to 1). */
+    minRadiusFraction: number;
+  };
+  bots: {
+    /** Bots are added only when fewer than this many humans have joined. */
+    humanThreshold: number;
+    /** When bots are added, they fill the round up to this many balls. */
+    fillTo: number;
+  };
+  commands: {
+    /** Minimum gap between any two commands from the same viewer. */
+    perUserCooldownSeconds: number;
+    /** Extra cooldown for !colour. */
+    colourCooldownSeconds: number;
+    /** Extra cooldown for !stats. */
+    statsCooldownSeconds: number;
+    /** How many times one viewer can !boost per round. */
+    boostsPerRound: number;
+  };
+  server: {
+    /** Port the game page connects to for chat commands. */
+    wsPort: number;
+  };
+  youtube: {
+    /** Daily quota for your Google Cloud project (default 10,000). */
+    dailyQuotaUnits: number;
+    /** Stop polling once this fraction of the daily quota is used. */
+    quotaStopFraction: number;
+  };
+  simulator: {
+    /** Number of fake viewers. */
+    viewers: number;
+    /** Average fake chat messages per second. */
+    messagesPerSecond: number;
+  };
+}
+
+export const DEFAULT_CONFIG: GameConfig = {
+  round: {
+    joinWindowSeconds: 45,
+    maxFightSeconds: 180,
+    winnerScreenSeconds: 10,
+    countdownSeconds: 5,
+    maxPlayers: 60,
+  },
+  arena: {
+    shrinkDelaySeconds: 10,
+    shrinkDurationSeconds: 150,
+    minRadiusFraction: 0.12,
+  },
+  bots: {
+    humanThreshold: 4,
+    fillTo: 6,
+  },
+  commands: {
+    perUserCooldownSeconds: 2,
+    colourCooldownSeconds: 20,
+    statsCooldownSeconds: 30,
+    boostsPerRound: 1,
+  },
+  server: {
+    wsPort: 8787,
+  },
+  youtube: {
+    dailyQuotaUnits: 10000,
+    quotaStopFraction: 0.9,
+  },
+  simulator: {
+    viewers: 25,
+    messagesPerSecond: 1.5,
+  },
+};
+
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
+/** Overlay a (possibly incomplete) user config on the defaults, ignoring unknown keys and wrong types. */
+export function mergeConfig(user: DeepPartial<GameConfig> | undefined): GameConfig {
+  const out = structuredClone(DEFAULT_CONFIG) as unknown as Record<string, Record<string, unknown>>;
+  const src = (user ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  for (const section of Object.keys(out)) {
+    const given = src[section];
+    if (!given || typeof given !== 'object') continue;
+    for (const key of Object.keys(out[section])) {
+      if (typeof given[key] === typeof out[section][key]) out[section][key] = given[key];
+    }
+  }
+  return out as unknown as GameConfig;
+}

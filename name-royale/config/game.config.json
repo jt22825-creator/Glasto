@@ -1,0 +1,35 @@
+{
+  "round": {
+    "joinWindowSeconds": 45,
+    "maxFightSeconds": 180,
+    "winnerScreenSeconds": 10,
+    "countdownSeconds": 5,
+    "maxPlayers": 60
+  },
+  "arena": {
+    "shrinkDelaySeconds": 10,
+    "shrinkDurationSeconds": 150,
+    "minRadiusFraction": 0.12
+  },
+  "bots": {
+    "humanThreshold": 4,
+    "fillTo": 6
+  },
+  "commands": {
+    "perUserCooldownSeconds": 2,
+    "colourCooldownSeconds": 20,
+    "statsCooldownSeconds": 30,
+    "boostsPerRound": 1
+  },
+  "server": {
+    "wsPort": 8787
+  },
+  "youtube": {
+    "dailyQuotaUnits": 10000,
+    "quotaStopFraction": 0.9
+  },
+  "simulator": {
+    "viewers": 25,
+    "messagesPerSecond": 1.5
+  }
+}

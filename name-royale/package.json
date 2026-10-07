@@ -1,0 +1,28 @@
+{
+  "name": "name-royale",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A chat-plays battle royale for YouTube live streams. Type !join to play.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "sim": "node server/index.ts --source=sim",
+    "live": "node server/index.ts --source=youtube",
+    "server": "node server/index.ts --source=none",
+    "game": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0"
+  }
+}

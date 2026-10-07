@@ -1,0 +1,9 @@
+node_modules/
+dist/
+# Your OAuth client and tokens. Never commit these.
+secrets/*
+!secrets/README.md
+# Leaderboard and runtime data
+data/*
+!data/.gitkeep
+*.log
