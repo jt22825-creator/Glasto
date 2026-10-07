@@ -15,7 +15,7 @@
     "game": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/youtube.test.ts"
+    "test": "node --test tests/youtube.test.ts tests/leaderboard.test.ts tests/obs.test.ts"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.5",

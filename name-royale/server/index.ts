@@ -5,16 +5,22 @@
 //   node server/index.ts --source=youtube   real YouTube chat
 //   add --video=<id or URL> to read a specific stream's chat
 //   add --no-game to skip starting the game page server
+//
+// While it runs, type "end" and press Enter to finish the show: the current
+// round completes, the end card shows, and OBS stops streaming.
+import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { loadConfig, ROOT } from './config.ts';
+import { ShowEnder } from './ending.ts';
 import { Hub } from './hub.ts';
 import { CommandLimiter, parseCommand } from './commands.ts';
 import { Leaderboard } from './leaderboard.ts';
-import { cleanViewer, isBanned } from './moderation.ts';
+import { cleanViewer, isBanned, isProfane } from './moderation.ts';
+import { obsStatus } from './obs.ts';
 import { SimulatorSource } from './sources/simulator.ts';
 import { YouTubeSource } from './sources/youtube.ts';
-import { SetupError } from './youtube/oauth.ts';
 import type { ChatEvent, ChatSource } from './sources/types.ts';
+import { SetupError } from './youtube/oauth.ts';
 
 const { values: args } = parseArgs({
   options: {
@@ -28,6 +34,7 @@ const config = loadConfig();
 const hub = new Hub(config.server.wsPort);
 const limiter = new CommandLimiter(config.commands);
 const leaderboard = new Leaderboard();
+const ender = new ShowEnder(config.ending, hub);
 
 let source: ChatSource | undefined;
 if (args.source === 'sim') source = new SimulatorSource(config);
@@ -37,24 +44,39 @@ else if (args.source !== 'none') {
   process.exit(1);
 }
 
+/** Leaderboard for the screen: banned viewers hidden, names re-checked against the current word list. */
+const board = () =>
+  leaderboard
+    .top(undefined, (e) => isBanned(e))
+    .map((e) => (isProfane(e.name) ? { ...e, name: cleanViewer(e).name } : e));
+
 hub.handleConnect((send, primary) => {
-  send({ type: 'hello', config, source: source?.name ?? 'none', nextRound: leaderboard.nextRound, primary });
-  send({ type: 'leaderboard', entries: leaderboard.top() });
+  send({ type: 'hello', config, source: source?.name ?? 'none', nextRound: leaderboard.nextRound, primary, ending: ender.ending });
+  send({ type: 'leaderboard', entries: board() });
 });
 
 hub.handleMessage((msg, fromPrimary) => {
-  if (msg.type !== 'roundResult') return;
   if (!fromPrimary) return; // a preview tab's rounds don't count
+  if (msg.type === 'ended') {
+    ender.onGameEnded();
+    return;
+  }
   leaderboard.record(msg.round, msg.winner, msg.placements);
   const winnerStats = msg.winner ? leaderboard.stats(msg.winner.id) : null;
   console.log(
     `[round ${msg.round}] winner: ${msg.winner ? `${msg.winner.name} (${winnerStats?.wins} wins)` : 'a bot'}; ${msg.placements.length} humans played`,
   );
   hub.broadcast({ type: 'roundRecorded', round: msg.round, winner: msg.winner, winnerStats });
-  hub.broadcast({ type: 'leaderboard', entries: leaderboard.top() });
+  hub.broadcast({ type: 'leaderboard', entries: board() });
 });
 
 const onChat = (event: ChatEvent) => {
+  if (event.kind === 'exhausted') {
+    if (config.ending.endShowWhenQuotaRunsOut) void ender.begin(event.reason);
+    else console.warn(`[chat] ${event.reason}. The game keeps running with bots (ending.endShowWhenQuotaRunsOut is off).`);
+    return;
+  }
+  if (ender.ending) return; // no new players once the show is ending
   if (event.kind === 'paid') {
     const viewer = cleanViewer(event.event.viewer);
     if (isBanned(viewer)) return;
@@ -67,10 +89,19 @@ const onChat = (event: ChatEvent) => {
   if (isBanned(event.viewer)) return;
   if (!limiter.allow(event.viewer.id, command.kind)) return;
   const viewer = cleanViewer(event.viewer);
-  if (command.kind === 'stats') {
-    hub.broadcast({ type: 'stats', viewer, stats: leaderboard.stats(viewer.id) });
-  } else {
-    hub.broadcast({ type: 'command', viewer, command });
+  switch (command.kind) {
+    case 'stats':
+      hub.broadcast({ type: 'stats', viewer, stats: leaderboard.stats(viewer.id) });
+      return;
+    case 'colour':
+      leaderboard.setColour(viewer, command.colour); // remembered for future rounds and streams
+      hub.broadcast({ type: 'command', viewer, command });
+      return;
+    case 'join':
+      hub.broadcast({ type: 'command', viewer, command: { kind: 'join', colour: leaderboard.colour(viewer.id) } });
+      return;
+    default:
+      hub.broadcast({ type: 'command', viewer, command });
   }
 };
 
@@ -84,17 +115,29 @@ try {
   throw err;
 }
 
+// Live shows: check early that OBS can be reached, so a problem shows up now rather than at the end.
+if (args.source === 'youtube' && config.ending.stopObsStream) {
+  obsStatus(config.ending.obsWebSocketUrl)
+    .then((s) => console.log(`[obs] Connected to OBS (${s.streaming ? 'streaming' : 'not streaming yet'}). It will be stopped automatically when the show ends.`))
+    .catch((err) => console.warn(`[obs] ${err.message}. The stream won't stop automatically; see README "Ending the show".`));
+}
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim().toLowerCase() === 'end') void ender.begin('you typed "end"');
+});
+
 if (!args['no-game']) {
   const { createServer } = await import('vite');
   const vite = await createServer({ root: ROOT, logLevel: 'warn' });
   await vite.listen();
   console.log('[game] Vertical:  http://localhost:5173/');
   console.log('[game] Landscape: http://localhost:5173/?layout=landscape');
-  console.log('[game] Add &quick to either URL for short rounds while testing.');
+  console.log('[game] Add ?quick for short rounds while testing. Type "end" here to finish the show.');
 }
 
 const shutdown = () => {
   source?.stop();
+  leaderboard.save();
   hub.close();
   process.exit(0);
 };

@@ -37,7 +37,8 @@ try {
         for (const item of r.items ?? []) {
           for (const e of convertItem(item).events) {
             count++;
-            console.log(e.kind === 'text' ? `  ${e.viewer.name}: ${e.text}` : `  [${e.event.kind}] from ${e.event.viewer.name}`);
+            if (e.kind === 'text') console.log(`  ${e.viewer.name}: ${e.text}`);
+            else if (e.kind === 'paid') console.log(`  [${e.event.kind}] from ${e.event.viewer.name}`);
           }
         }
       },

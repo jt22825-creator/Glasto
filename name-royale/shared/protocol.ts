@@ -11,7 +11,8 @@ export interface Viewer {
 
 /** Commands the server forwards to the game. !stats is answered by the server itself. */
 export type ChatCommand =
-  | { kind: 'join' }
+  /** `colour` is the viewer's saved !colour choice, if they have one. */
+  | { kind: 'join'; colour?: ColourName }
   | { kind: 'boost' }
   | { kind: 'colour'; colour: ColourName };
 
@@ -43,19 +44,26 @@ export type ServerToGame =
        * while OBS is running, the tab is not primary and its rounds aren't recorded.
        */
       primary: boolean;
+      /** The show is ending (see 'endStream'); go straight to the end card. */
+      ending: boolean;
     }
   | { type: 'role'; primary: boolean }
   | { type: 'command'; viewer: Viewer; command: ChatCommand }
   | { type: 'stats'; viewer: Viewer; stats: PlayerStats }
   | { type: 'leaderboard'; entries: LeaderboardEntry[] }
   | { type: 'roundRecorded'; round: number; winner: Viewer | null; winnerStats: PlayerStats | null }
-  | { type: 'paid'; event: PaidEvent };
+  | { type: 'paid'; event: PaidEvent }
+  /** Finish the current round, then show the end card and reply 'ended'. */
+  | { type: 'endStream'; reason: string };
 
-export type GameToServer = {
-  type: 'roundResult';
-  round: number;
-  /** The overall winner, or null if a bot won. */
-  winner: Viewer | null;
-  /** Every human who played, best placement first. Bots are never sent. */
-  placements: Viewer[];
-};
+export type GameToServer =
+  | {
+      type: 'roundResult';
+      round: number;
+      /** The overall winner, or null if a bot won. */
+      winner: Viewer | null;
+      /** Every human who played, best placement first. Bots are never sent. */
+      placements: Viewer[];
+    }
+  /** The end card is on screen. */
+  | { type: 'ended' };

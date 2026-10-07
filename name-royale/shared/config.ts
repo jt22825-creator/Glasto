@@ -66,6 +66,16 @@ export interface GameConfig {
     /** Estimated quota cost of looking up your channel, broadcast or video. */
     costLookup: number;
   };
+  ending: {
+    /** When the YouTube quota runs out: finish the round, show the end card, then stop the stream. */
+    endShowWhenQuotaRunsOut: boolean;
+    /** How long the "Thanks for playing" card shows before the stream is stopped. */
+    endCardSeconds: number;
+    /** Ask OBS to stop streaming at the end (needs OBS's WebSocket server; see README). */
+    stopObsStream: boolean;
+    /** OBS WebSocket address (OBS → Tools → WebSocket Server Settings). The password goes in secrets/obs-password.txt. */
+    obsWebSocketUrl: string;
+  };
   simulator: {
     /** Number of fake viewers. */
     viewers: number;
@@ -113,6 +123,12 @@ export const DEFAULT_CONFIG: GameConfig = {
     costStreamOpen: 1,
     costStreamResponse: 1,
     costLookup: 1,
+  },
+  ending: {
+    endShowWhenQuotaRunsOut: true,
+    endCardSeconds: 30,
+    stopObsStream: true,
+    obsWebSocketUrl: 'ws://127.0.0.1:4455',
   },
   simulator: {
     viewers: 25,

@@ -76,7 +76,10 @@ export class YouTubeSource implements ChatSource {
     while (!this.stopped) {
       try {
         if (this.quota.level === 'stopped') {
-          if (!warnedStopped) console.warn('[youtube] Quota nearly used up: not reading chat until it resets (midnight Pacific time).');
+          if (!warnedStopped) {
+            console.warn('[youtube] Quota nearly used up: not reading chat until it resets (midnight Pacific time).');
+            this.emit({ kind: 'exhausted', reason: 'the YouTube API quota is used up for today' });
+          }
           warnedStopped = true;
           await this.sleep(QUOTA_STOPPED_RETRY_MS);
           continue;

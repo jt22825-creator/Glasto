@@ -6,6 +6,7 @@
 //   sponsor alice          -> "alice" becomes a member
 //   flood 40               -> 40 new fake viewers all type !join at once
 //   pause / resume         -> stop or start the random viewers
+//   end                    -> finish the show (handled by the server)
 import { createInterface } from 'node:readline';
 import type { GameConfig } from '../../shared/config.ts';
 import type { Viewer } from '../../shared/protocol.ts';
@@ -71,7 +72,7 @@ export class SimulatorSource implements ChatSource {
   }
 
   private handleTyped(line: string, emit: (event: ChatEvent) => void): void {
-    if (!line) return;
+    if (!line || line.toLowerCase() === 'end') return; // "end" is handled by the server
     const [first, second, third] = line.split(/\s+/);
     if (first === 'pause' || first === 'resume') {
       this.paused = first === 'pause';

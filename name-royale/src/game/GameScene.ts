@@ -17,7 +17,7 @@ import { Ball } from './Ball.ts';
 import { pickBotNames } from './bots.ts';
 import { PaidHooks, type GameApi } from './paidEvents.ts';
 
-type Phase = 'join' | 'fight' | 'podium' | 'countdown';
+type Phase = 'join' | 'fight' | 'podium' | 'countdown' | 'ended';
 
 // Movement tuning, in pixels per physics step (1/60 s).
 const WANDER = 0.045; // each ball's own random wandering
@@ -83,6 +83,9 @@ export class GameScene extends Phaser.Scene implements GameApi {
   toasts!: Toasts;
   private podium!: Podium;
   private bigCountdown!: Phaser.GameObjects.Text;
+  private bannerText!: Phaser.GameObjects.Text;
+  /** The show is ending: finish this round, then show the end card. */
+  private ending = false;
   private statusText!: Phaser.GameObjects.Text;
   private previewTag!: Phaser.GameObjects.Text;
   private paid!: PaidHooks;
@@ -114,7 +117,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
 
     const b = L.joinBanner;
     this.add.graphics().setDepth(50).fillStyle(THEME.accent).fillRoundedRect(b.x, b.y, b.w, b.h, 24).lineStyle(6, THEME.outline).strokeRoundedRect(b.x, b.y, b.w, b.h, 24);
-    bigText(this, b.x + b.w / 2, b.y + b.h / 2, 'Type !join to play', L.bannerFontSize).setOrigin(0.5).setDepth(51);
+    this.bannerText = bigText(this, b.x + b.w / 2, b.y + b.h / 2, 'Type !join to play', L.bannerFontSize).setOrigin(0.5).setDepth(51);
 
     this.bigCountdown = bigText(this, L.arena.x, L.arena.y, '', 240, THEME.textAccent).setOrigin(0.5).setDepth(65);
     this.statusText = bigText(this, L.width - 20, L.height - 12, '', 22, THEME.textDanger).setOrigin(1, 1).setDepth(90);
@@ -141,6 +144,10 @@ export class GameScene extends Phaser.Scene implements GameApi {
           this.round = msg.nextRound;
           this.hud.setRound(this.round);
         }
+        if (msg.ending) this.beginEnding();
+        break;
+      case 'endStream':
+        this.beginEnding();
         break;
       case 'role':
         this.setPrimary(msg.primary);
@@ -185,6 +192,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
   private handleCommand(viewer: Viewer, command: ChatCommand): void {
     switch (command.kind) {
       case 'join':
+        if (command.colour) this.colourPrefs.set(viewer.id, command.colour); // saved from an earlier stream
         return this.join(viewer);
       case 'boost':
         return this.boost(viewer);
@@ -197,6 +205,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
   }
 
   private join(viewer: Viewer): void {
+    if (this.ending) return;
     if (this.byId.has(viewer.id) && this.phase !== 'podium' && this.phase !== 'countdown') return;
     if (this.phase === 'join' && this.balls.length < this.config.round.maxPlayers) {
       this.spawn(viewer, false);
@@ -367,6 +376,53 @@ export class GameScene extends Phaser.Scene implements GameApi {
     });
   }
 
+  // ---------------------------------------------------------------- ending the show
+
+  /** Finish whatever is happening, then show the end card. */
+  private beginEnding(): void {
+    if (this.ending) return;
+    this.ending = true;
+    this.queue = [];
+    switch (this.phase) {
+      case 'join':
+        // Start the fight now with whoever has joined; with nobody, go straight to the end.
+        if (this.balls.some((b) => !b.isBot)) {
+          this.announce('LAST ROUND!', THEME.textAccent);
+          this.startFight();
+        } else this.showEndCard();
+        break;
+      case 'fight':
+        this.announce('LAST ROUND!', THEME.textAccent);
+        break;
+      case 'countdown':
+        this.showEndCard();
+        break;
+      default:
+        break; // podium: the update loop shows the end card when it finishes
+    }
+  }
+
+  private showEndCard(): void {
+    this.phase = 'ended';
+    this.clearBalls();
+    this.podium.hide();
+    this.resetArena();
+    this.bigCountdown.setText('');
+    this.hud.setPhase('THAT\'S ALL!', THEME.textAccent);
+    this.hud.setTimer('');
+    this.hud.setAlive('');
+    this.bannerText.setText('Thanks for playing!');
+
+    const { x, y, radius: R } = this.layout.arena;
+    const card = this.add.container(0, 0).setDepth(60);
+    card.add(this.add.circle(x, y, R + 10, THEME.panel, 0.94));
+    card.add(bigText(this, x, y - R * 0.3, 'THANKS FOR\nPLAYING!', 92, THEME.textAccent).setOrigin(0.5).setAlign('center'));
+    card.add(bigText(this, x, y + R * 0.22, 'Back next stream.\nSubscribe so you don\'t miss it!', 40).setOrigin(0.5).setAlign('center'));
+    card.setAlpha(0);
+    this.tweens.add({ targets: card, alpha: 1, duration: 500 });
+    this.net.send({ type: 'ended' });
+  }
+
   private resetArena(): void {
     this.finalTwo = false;
     this.swirl.until = 0;
@@ -400,8 +456,11 @@ export class GameScene extends Phaser.Scene implements GameApi {
       case 'podium': {
         this.hud.setTimer('');
         const untilNext = left + this.config.round.countdownSeconds;
-        this.podium.setCountdown(`Next round in ${Math.ceil(untilNext)}s · type !join`);
-        if (left <= 0) this.startCountdown();
+        this.podium.setCountdown(this.ending ? 'That was the last round!' : `Next round in ${Math.ceil(untilNext)}s · type !join`);
+        if (left <= 0) {
+          if (this.ending) this.showEndCard();
+          else this.startCountdown();
+        }
         break;
       }
       case 'countdown':

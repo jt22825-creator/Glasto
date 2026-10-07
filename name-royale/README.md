@@ -2,14 +2,14 @@
 
 A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat and a ball with their name drops into a round arena. The edge slowly shrinks, balls get knocked off, and the last ball left wins.
 
-> **Status: Stage 3 (real YouTube chat).** The game runs with the simulator or with your stream's live chat. The leaderboard is kept in memory until Stage 4, so it resets when you restart the server.
+> **Status: Stage 4 (saved leaderboard).** The game runs with the simulator or your stream's live chat. Wins, rounds, streaks, colour choices and the round number are saved to disk. Next: Stage 5 polish (sound, particles, screen shake).
 
 ## Roadmap
 
 - [x] **Stage 1:** project scaffold, this README, server ↔ game connection, fake chat simulator
 - [x] **Stage 2:** the game itself (rounds, physics, shrinking arena, bots, podium), driven by the simulator
 - [x] **Stage 3:** real YouTube live chat
-- [ ] **Stage 4:** leaderboard saved to disk
+- [x] **Stage 4:** leaderboard saved to disk, plus ending the show (end card, OBS stop)
 - [ ] **Stage 5:** polish: sound, particles, screen shake, final vertical layout
 
 ---
@@ -92,6 +92,7 @@ The game is **vertical (1080x1920) by default**, made for Shorts-style live stre
 | `superchat alice 5` | alice sends a $5 Super Chat |
 | `sponsor alice` | alice becomes a channel member |
 | `flood 40` | 40 new fake viewers all type `!join` within 3 seconds |
+| `end` | End the show (also works in `npm run live`) |
 | `pause` / `resume` | Stop or restart the random fake viewers |
 
 Press **Ctrl+C** to stop everything.
@@ -214,12 +215,48 @@ Every project gets **10,000 units per day**. The count resets at midnight Pacifi
 [quota] ~2410 / 10000 units used today (24%, estimate): stream 2380, lookup 30
 ```
 - Above **75%** it switches to slow polling (every 12 s).
-- Above **95%** it stops reading chat until the quota resets. The game keeps running with bots.
-- If YouTube itself says the quota is used up, the server pauses straight away, whatever the estimate says.
+- Above **95%** it stops reading chat and **ends the show**: see [Ending the show](#ending-the-show).
+- If YouTube itself says the quota is used up, the show ends straight away, whatever the estimate says.
+- If you start the server after the quota has already run out that day, the show ends immediately. Wait until 8am UK time.
 
 **Calibrate after your first stream:** compare the estimate with the real number at **Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas & System Limits**. If they differ, adjust the `youtube.cost*` settings. The defaults are `costListCall` 5, `costStreamOpen` 1, `costStreamResponse` 1 and `costLookup` 1.
 
 Google doesn't clearly document `streamList`'s exact cost. Other developers report roughly 1,500–2,000 units per hour of busy chat, which would mean about 5 hours of streaming a day on the free quota. If you need more, request a quota increase. Search for "YouTube API Services quota extension" in the Google Cloud docs. Google reviews these requests and they take a while.
+
+## Ending the show
+
+Typing `end` into the server's terminal (and pressing Enter) ends the show. So does the YouTube quota running out. Either way:
+
+1. Nobody new can join. If people are still joining, the fight starts straight away with them. If nobody has joined, it skips straight to the end.
+2. The current round plays out and the podium shows as normal, so nobody's win gets cut off.
+3. A **"Thanks for playing!"** card replaces the next round.
+4. After `ending.endCardSeconds` (30 s), the server tells **OBS to stop streaming**.
+
+### Let the server stop OBS (one time, 2 minutes)
+OBS 28 and newer has a built-in remote control server:
+1. In OBS: **Tools → WebSocket Server Settings**.
+2. Tick **Enable WebSocket server**. Leave the port as **4455**.
+3. Tick **Enable Authentication**, click **Show Connect Info**, and copy the **Server Password**.
+4. Save that password, on its own, in a new text file: `name-royale/secrets/obs-password.txt`.
+
+When you run `npm run live`, the server checks the connection straight away:
+```
+[obs] Connected to OBS (streaming). It will be stopped automatically when the show ends.
+```
+If it can't connect, it tells you why, and at the end it will ask you (loudly, in the terminal) to stop the stream yourself.
+
+**Settings:** turn automatic stopping off with `ending.stopObsStream: false`. Set `ending.endShowWhenQuotaRunsOut: false` if you'd rather the game keep running with bots only when the quota runs out.
+
+## The leaderboard file
+
+Everything is saved in `data/leaderboard.json`: each viewer's wins, rounds played, current streak, chosen colour and latest name, plus the next round number. It's saved a second after every round, and again when you stop the server.
+
+- **Backup:** each save also keeps the previous version as `data/leaderboard.backup.json`. If the main file is ever damaged (say, by a power cut mid-save), the server loads the backup instead. It moves the damaged file aside as `leaderboard.unreadable-….json`, never deleting it.
+- **Start fresh:** stop the server, then move or delete `data/leaderboard.json` and `data/leaderboard.backup.json`.
+- **Fix something by hand:** stop the server first (otherwise your edit will be overwritten), edit the JSON, then start it again.
+- **Players are matched by their YouTube channel ID**, so renaming doesn't lose anyone's wins. The board always shows their latest name.
+- Bots are never saved. Banned viewers are hidden from the board, and names are re-checked against `blocked-words.txt` whenever the board is shown.
+- `!colour` choices are remembered, so a viewer's ball keeps its colour in future streams.
 
 ## 4. OBS setup
 
@@ -279,7 +316,7 @@ In **YouTube Studio → Create → Go live → Stream**:
 |---|---|---|
 | `!join` | Enter the next round | Once per round |
 | `!boost` | Small random push on your own ball | Once per round |
-| `!colour <name>` (or `!color`) | Pick your ball colour: red, orange, yellow, lime, mint, sky, blue, purple, pink, white. Also understands green, cyan, teal, violet and gold. Your choice is remembered until the game page reloads. | Cooldown |
+| `!colour <name>` (or `!color`) | Pick your ball colour: red, orange, yellow, lime, mint, sky, blue, purple, pink, white. Also understands green, cyan, teal, violet and gold. Your choice is saved and kept for future streams. | Cooldown |
 | `!stats` | Show your wins and rounds played on screen for a few seconds | Cooldown |
 
 All commands are free. Each viewer also has a short general cooldown, so spamming does nothing.
@@ -311,6 +348,10 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | `youtube.saverPollSeconds` | 12 | Poll interval in slow-polling mode |
 | `youtube.quotaStopFraction` | 0.95 | Stop reading chat above this fraction of the quota |
 | `youtube.costListCall` / `costStreamOpen` / `costStreamResponse` / `costLookup` | 5 / 1 / 1 / 1 | Estimated quota cost of each kind of call. See [Quota](#quota). |
+| `ending.endShowWhenQuotaRunsOut` | true | When the YouTube quota runs out, end the show (see [Ending the show](#ending-the-show)) |
+| `ending.endCardSeconds` | 30 | How long the "Thanks for playing!" card shows before the stream stops |
+| `ending.stopObsStream` | true | Ask OBS to stop streaming at the end |
+| `ending.obsWebSocketUrl` | ws://127.0.0.1:4455 | OBS's WebSocket address. The password goes in `secrets/obs-password.txt`. |
 | `simulator.viewers` | 25 | Number of fake viewers |
 | `simulator.messagesPerSecond` | 1.5 | Average rate of fake chat messages |
 
@@ -328,8 +369,8 @@ name-royale/
 │   ├── game.config.json   ← settings you can change
 │   ├── banlist.txt        ← banned viewers
 │   └── blocked-words.txt  ← words not allowed in names on screen
-├── data/                  ← leaderboard file (Stage 4). Not in git.
-├── secrets/               ← client_secret.json and your sign-in token. Not in git.
+├── data/                  ← leaderboard.json, its backup, and quota.json. Not in git.
+├── secrets/               ← client_secret.json, token.json, obs-password.txt. Not in git.
 ├── shared/                ← code used by both the server and the game
 │   ├── config.ts          ← settings and their defaults
 │   ├── palette.ts         ← the !colour palette
@@ -339,7 +380,9 @@ name-royale/
 │   ├── hub.ts             ← WebSocket connection to the game
 │   ├── commands.ts        ← turns chat text into commands, cooldowns
 │   ├── moderation.ts      ← ban list and name filter
-│   ├── leaderboard.ts     ← wins, rounds and streaks
+│   ├── leaderboard.ts     ← wins, rounds, streaks and colours, saved to data/
+│   ├── ending.ts          ← end-of-show sequence
+│   ├── obs.ts             ← tells OBS to stop streaming
 │   ├── sources/           ← where chat comes from
 │   │   ├── simulator.ts   ← fake chat
 │   │   └── youtube.ts     ← real YouTube chat: find stream, stream or poll, quota levels
@@ -389,4 +432,6 @@ name-royale/
 - **`Error 403: access_denied` in the browser**: your Google account isn't a test user (section 3c, step 5).
 - **The sign-in page keeps coming back every week**: that's the 7-day limit in Testing mode (section 3e).
 - **"No live stream found"** while you are live: you signed in with a different account or Brand Account than the one streaming. Delete `secrets/token.json` and sign in again, picking the channel. Or use `--video=`.
+- **`OBS rejected the password`**: copy the password again from OBS → Tools → WebSocket Server Settings → Show Connect Info into `secrets/obs-password.txt`.
+- **`can't reach OBS`**: OBS isn't open, or its WebSocket server isn't enabled (see [Ending the show](#ending-the-show)).
 - **Commands are ignored**: check that live chat is on, the stream isn't "made for kids", and the viewer isn't in `config/banlist.txt`. Each viewer also has a short cooldown.

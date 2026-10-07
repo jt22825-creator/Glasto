@@ -38,6 +38,12 @@
     "costStreamResponse": 1,
     "costLookup": 1
   },
+  "ending": {
+    "endShowWhenQuotaRunsOut": true,
+    "endCardSeconds": 30,
+    "stopObsStream": true,
+    "obsWebSocketUrl": "ws://127.0.0.1:4455"
+  },
   "simulator": {
     "viewers": 25,
     "messagesPerSecond": 1.5
