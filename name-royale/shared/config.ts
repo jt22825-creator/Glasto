@@ -94,7 +94,7 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   round: {
-    joinWindowSeconds: 45,
+    joinWindowSeconds: 25,
     winnerScreenSeconds: 10,
     countdownSeconds: 5,
     maxPlayers: 60,

@@ -123,7 +123,7 @@ There's also a light **looping music track**. Turn it off with `audio.music: fal
 
 ## How a round works
 
-1. **Join (45 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
+1. **Join (25 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
 
    **Crowded rounds:** when more than 18 balls are alive, only 15 show full names and the rest show initials (e.g. `NG` for NeonGecko). While people are joining, the 15 newest arrivals get full names. During the fight, it's the 15 nearest the edge, because they're the ones about to go.
 2. **Fight (30–50 s).** If fewer than 12 balls joined, bots (`bot_pebble`, `bot_waffle`, …) fill the gap. It's built to keep moving:
@@ -140,7 +140,7 @@ There's also a light **looping music track**. Turn it off with `audio.music: fal
 4. **Winner (10 s).** A podium shows 1st, 2nd and 3rd, plus the winner's all-time wins.
 5. **Countdown (5 s),** then the next join window opens. A `!join` typed after the window closes is queued for the next round.
 
-Rounds take about 2 minutes in total (45 s to join, 30–50 s of fighting, then the podium and countdown). The edge always closes completely, so every round ends with exactly one winner. If the last balls go out at the same moment, the one nearest the centre wins.
+Rounds take about 1½ minutes in total (25 s to join, 30–50 s of fighting, then the podium and countdown). The edge always closes completely, so every round ends with exactly one winner. If the last balls go out at the same moment, the one nearest the centre wins.
 
 ### Page address options
 
@@ -359,7 +359,7 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `round.joinWindowSeconds` | 45 | Time to `!join` before the fight starts |
+| `round.joinWindowSeconds` | 25 | Time to `!join` before the fight starts |
 | `round.winnerScreenSeconds` | 10 | How long the podium shows |
 | `round.countdownSeconds` | 5 | Countdown before the next join window |
 | `round.maxPlayers` | 60 | Most balls in one round. Extra joiners go into the next round. |
