@@ -2,12 +2,12 @@
 
 A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat and a ball with their name drops into a round arena. The edge slowly shrinks, balls get knocked off, and the last ball left wins.
 
-> **Status: Stage 1 (scaffold).** The page shows where everything will go and lists chat commands as they arrive. The game itself is built in Stage 2.
+> **Status: Stage 2 (the game, driven by fake chat).** Full rounds work with the simulator. The leaderboard is kept in memory until Stage 4, so it resets when you restart the server.
 
 ## Roadmap
 
 - [x] **Stage 1:** project scaffold, this README, server ↔ game connection, fake chat simulator
-- [ ] **Stage 2:** the game itself (rounds, physics, shrinking arena, bots, podium), driven by the simulator
+- [x] **Stage 2:** the game itself (rounds, physics, shrinking arena, bots, podium), driven by the simulator
 - [ ] **Stage 3:** real YouTube live chat
 - [ ] **Stage 4:** leaderboard saved to disk
 - [ ] **Stage 5:** polish: sound, particles, screen shake, final vertical layout
@@ -76,7 +76,9 @@ You'll see:
 [game] Vertical:  http://localhost:5173/?layout=vertical
 ```
 
-Open <http://localhost:5173/> in Chrome, Edge or Safari. Fake viewers start sending commands right away.
+Open <http://localhost:5173/> in Chrome, Edge or Safari. Fake viewers start joining right away.
+
+**Short rounds for testing:** add `?quick` to the address (<http://localhost:5173/?quick>). The join window is then 12 seconds and fights last under a minute.
 
 **You can also chat yourself.** Click into the terminal window and type a line, then press Enter:
 
@@ -86,9 +88,39 @@ Open <http://localhost:5173/> in Chrome, Edge or Safari. Fake viewers start send
 | `alice !colour mint` | alice picks a colour |
 | `superchat alice 5` | alice sends a $5 Super Chat |
 | `sponsor alice` | alice becomes a channel member |
+| `flood 40` | 40 new fake viewers all type `!join` within 3 seconds |
 | `pause` / `resume` | Stop or restart the random fake viewers |
 
 Press **Ctrl+C** to stop everything.
+
+## How a round works
+
+1. **Join (45 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
+2. **Fight.** If fewer than 12 balls joined, bots (`bot_pebble`, `bot_waffle`, …) fill the gap. After 10 seconds the yellow edge starts closing in, and it reaches nothing after another 150 seconds. Any ball whose centre crosses the edge is out. Balls drift towards the middle, so the pack gets squeezed as the arena shrinks. Every 12–20 seconds a chaos event fires:
+   - **Shockwave:** a red ring warns you, then everything nearby is blasted outward.
+   - **Swirl:** the whole arena spins for a few seconds.
+   - **Quake:** every ball gets a random shove.
+3. **Final two.** The screen edge pulses red and both balls get a "♥ 1 HP" tag.
+4. **Winner (10 s).** A podium shows 1st, 2nd and 3rd, plus the winner's all-time wins.
+5. **Countdown (5 s),** then the next join window opens. A `!join` typed after the window closes is queued for the next round.
+
+Rounds take about 3½ minutes in total. The edge always closes completely, so every round ends with exactly one winner. If the last balls go out at the same moment, the one nearest the centre wins.
+
+### Page address options
+
+Add these to the game page's address, e.g. `http://localhost:5173/?layout=vertical&quick`.
+
+| Option | What it does |
+|---|---|
+| `layout=vertical` | 1080x1920 vertical layout (default is 1920x1080 landscape) |
+| `quick` | Short rounds, for testing |
+| `log` | Prints elimination timings to the browser console (for tuning) |
+| `debug` | Draws the physics shapes |
+| `ws=ws://host:port` | Connect to a server on a different port or machine |
+
+### Only one screen counts
+
+If the game is open in OBS **and** in a browser tab, each runs its own rounds. Only the first one to connect (normally OBS) has its results recorded. The others show **"PREVIEW · results not saved"** in the bottom-left corner. If the first one closes, the next takes over.
 
 ---
 
@@ -191,7 +223,7 @@ In **YouTube Studio → Create → Go live → Stream**:
 |---|---|---|
 | `!join` | Enter the next round | Once per round |
 | `!boost` | Small random push on your own ball | Once per round |
-| `!colour <name>` (or `!color`) | Pick your ball colour from the palette | Cooldown |
+| `!colour <name>` (or `!color`) | Pick your ball colour: red, orange, yellow, lime, mint, sky, blue, purple, pink, white. Also understands green, cyan, teal, violet and gold. Your choice is remembered until the game page reloads. | Cooldown |
 | `!stats` | Show your wins and rounds played on screen for a few seconds | Cooldown |
 
 All commands are free. Each viewer also has a short general cooldown, so spamming does nothing.
@@ -203,15 +235,13 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | Setting | Default | Meaning |
 |---|---|---|
 | `round.joinWindowSeconds` | 45 | Time to `!join` before the fight starts |
-| `round.maxFightSeconds` | 180 | Fight time limit. If time runs out, the ball nearest the centre wins. |
 | `round.winnerScreenSeconds` | 10 | How long the podium shows |
 | `round.countdownSeconds` | 5 | Countdown before the next join window |
-| `round.maxPlayers` | 60 | Most balls in one round |
+| `round.maxPlayers` | 60 | Most balls in one round. Extra joiners go into the next round. |
 | `arena.shrinkDelaySeconds` | 10 | Fight time before the edge starts shrinking |
-| `arena.shrinkDurationSeconds` | 150 | How long the edge takes to shrink fully (lower = faster) |
-| `arena.minRadiusFraction` | 0.12 | Smallest arena size, as a fraction of the starting size |
-| `bots.humanThreshold` | 4 | Bots are added only if fewer humans than this join |
-| `bots.fillTo` | 6 | When bots are added, total balls in the round |
+| `arena.shrinkDurationSeconds` | 150 | Time for the edge to close completely. This is the longest a fight can last after the delay. Lower it for shorter rounds. |
+| `bots.minBalls` | 12 | Every round has at least this many balls. Bots fill the gap. |
+| `chaos.minGapSeconds` / `chaos.maxGapSeconds` | 12 / 20 | Random gap between chaos events |
 | `commands.perUserCooldownSeconds` | 2 | Minimum gap between any two commands from one viewer |
 | `commands.colourCooldownSeconds` | 20 | Cooldown for `!colour` |
 | `commands.statsCooldownSeconds` | 30 | Cooldown for `!stats` |
@@ -222,7 +252,11 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | `simulator.viewers` | 25 | Number of fake viewers |
 | `simulator.messagesPerSecond` | 1.5 | Average rate of fake chat messages |
 
-**Ban list:** add channel IDs or exact display names to `config/banlist.txt`, one per line.
+**Ban list:** add channel IDs or exact display names to `config/banlist.txt`, one per line. Commands from banned viewers are ignored.
+
+**Name filter:** `config/blocked-words.txt` lists words that can't appear in names on screen. A name containing one is shown as `viewer_xxxx` instead. The file explains how matching works. Names are also shortened to 20 characters.
+
+You can edit both files while the server is running. They're re-read within a couple of seconds.
 
 ## Project layout
 
@@ -230,16 +264,20 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 name-royale/
 ├── config/
 │   ├── game.config.json   ← settings you can change
-│   └── banlist.txt        ← banned viewers
+│   ├── banlist.txt        ← banned viewers
+│   └── blocked-words.txt  ← words not allowed in names on screen
 ├── data/                  ← leaderboard file (Stage 4). Not in git.
 ├── secrets/               ← client_secret.json and your sign-in token. Not in git.
 ├── shared/                ← code used by both the server and the game
 │   ├── config.ts          ← settings and their defaults
+│   ├── palette.ts         ← the !colour palette
 │   └── protocol.ts        ← messages between the server and the game
 ├── server/                ← Node.js program
 │   ├── index.ts           ← start here
 │   ├── hub.ts             ← WebSocket connection to the game
-│   ├── commands.ts        ← turns chat text into commands
+│   ├── commands.ts        ← turns chat text into commands, cooldowns
+│   ├── moderation.ts      ← ban list and name filter
+│   ├── leaderboard.ts     ← wins, rounds and streaks
 │   └── sources/           ← where chat comes from
 │       ├── simulator.ts   ← fake chat
 │       └── youtube.ts     ← real YouTube chat (Stage 3)
@@ -248,7 +286,12 @@ name-royale/
 │   ├── layout.ts          ← 16:9 and 9:16 screen layouts
 │   ├── net.ts             ← connects to the server, reconnects automatically
 │   ├── theme.ts           ← colours and fonts
-│   └── scenes/
+│   ├── game/
+│   │   ├── GameScene.ts   ← the round loop, physics and chaos events
+│   │   ├── Ball.ts        ← one player's ball
+│   │   ├── bots.ts        ← bot names
+│   │   └── paidEvents.ts  ← onSuperChat / onSponsor hooks for later extras
+│   └── ui/                ← HUD, leaderboard, feed, pop-ups, podium
 └── index.html
 ```
 

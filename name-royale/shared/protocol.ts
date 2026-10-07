@@ -1,17 +1,19 @@
 // Messages sent over the WebSocket between the Node server and the game page.
+import type { GameConfig } from './config.ts';
+import type { ColourName } from './palette.ts';
 
 /** A viewer. `id` is stable (YouTube channel ID, or a fake ID in the simulator). */
 export interface Viewer {
   id: string;
-  /** Display name, already profanity-filtered by the server. */
+  /** Display name, already cleaned up and profanity-filtered by the server. */
   name: string;
 }
 
+/** Commands the server forwards to the game. !stats is answered by the server itself. */
 export type ChatCommand =
   | { kind: 'join' }
   | { kind: 'boost' }
-  | { kind: 'colour'; colour: string }
-  | { kind: 'stats' };
+  | { kind: 'colour'; colour: ColourName };
 
 export interface PlayerStats {
   wins: number;
@@ -30,13 +32,30 @@ export type PaidEvent =
   | { kind: 'sponsor'; viewer: Viewer };
 
 export type ServerToGame =
-  | { type: 'hello'; config: import('./config.ts').GameConfig; source: string }
+  | {
+      type: 'hello';
+      config: GameConfig;
+      source: string;
+      /** The round number the server expects next. */
+      nextRound: number;
+      /**
+       * Only the primary screen's results count. If you open a preview tab
+       * while OBS is running, the tab is not primary and its rounds aren't recorded.
+       */
+      primary: boolean;
+    }
+  | { type: 'role'; primary: boolean }
   | { type: 'command'; viewer: Viewer; command: ChatCommand }
   | { type: 'stats'; viewer: Viewer; stats: PlayerStats }
   | { type: 'leaderboard'; entries: LeaderboardEntry[] }
+  | { type: 'roundRecorded'; round: number; winner: Viewer | null; winnerStats: PlayerStats | null }
   | { type: 'paid'; event: PaidEvent };
 
-export type GameToServer =
-  | { type: 'roundStarted'; round: number }
-  /** Human players only, best first. Bots are never sent. */
-  | { type: 'roundResult'; round: number; placements: Viewer[] };
+export type GameToServer = {
+  type: 'roundResult';
+  round: number;
+  /** The overall winner, or null if a bot won. */
+  winner: Viewer | null;
+  /** Every human who played, best placement first. Bots are never sent. */
+  placements: Viewer[];
+};

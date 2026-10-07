@@ -1,0 +1,45 @@
+# Usernames containing any of these words are shown as "viewer_xxxx" instead.
+# Matching ignores case, spaces, punctuation and common swaps (0->o, 1->i, 3->e, 4->a, 5->s, $->s, @->a).
+#
+# A plain word matches anywhere inside a name, e.g. "fuck" also catches "xXfuckXx".
+# A word starting with = only matches a whole word in the name, for short words
+# that appear inside innocent names (e.g. =ass would block "Big Ass" but not "Classic").
+#
+# Add your own, one per line. The server re-reads this file while running.
+fuck
+shit
+cunt
+bitch
+bastard
+wank
+twat
+bollock
+dick
+cock
+pussy
+penis
+vagina
+porn
+nigg
+fag
+retard
+spastic
+tranny
+kike
+chink
+paki
+nazi
+hitler
+rape
+=ass
+=arse
+=tit
+=tits
+=cum
+=sex
+=slut
+=whore
+=hoe
+=piss
+=prick
+=kys

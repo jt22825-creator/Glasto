@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
+import { GameScene } from './game/GameScene.ts';
 import { pickLayout } from './layout.ts';
 import { Net } from './net.ts';
-import { PreviewScene } from './scenes/PreviewScene.ts';
 import { THEME } from './theme.ts';
 
+const params = new URLSearchParams(window.location.search);
 const layout = pickLayout();
 const net = new Net();
 
@@ -15,5 +16,7 @@ new Phaser.Game({
   backgroundColor: THEME.bg,
   // Scale to fit any window while keeping the exact 1920x1080 / 1080x1920 coordinates.
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [new PreviewScene(layout, net)],
+  physics: { default: 'matter', matter: { gravity: { x: 0, y: 0 }, debug: params.has('debug') } },
+  disableContextMenu: true,
+  scene: [new GameScene(layout, net, params.has('quick'))],
 });

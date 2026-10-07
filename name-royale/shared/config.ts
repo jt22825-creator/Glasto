@@ -6,8 +6,6 @@ export interface GameConfig {
   round: {
     /** Seconds viewers have to type !join before the fight starts. */
     joinWindowSeconds: number;
-    /** Hard cap on the fight phase. If time runs out, the ball nearest the centre wins. */
-    maxFightSeconds: number;
     /** How long the podium screen stays up. */
     winnerScreenSeconds: number;
     /** Countdown shown after the podium, before the next join window opens. */
@@ -18,16 +16,17 @@ export interface GameConfig {
   arena: {
     /** Seconds of fighting before the edge starts to shrink. */
     shrinkDelaySeconds: number;
-    /** Seconds for the edge to shrink from full size to its smallest size. */
+    /** Seconds for the edge to shrink from full size to nothing. The round always ends by then. */
     shrinkDurationSeconds: number;
-    /** Smallest arena size, as a fraction of the starting size (0 to 1). */
-    minRadiusFraction: number;
   };
   bots: {
-    /** Bots are added only when fewer than this many humans have joined. */
-    humanThreshold: number;
-    /** When bots are added, they fill the round up to this many balls. */
-    fillTo: number;
+    /** Every round has at least this many balls. Bots fill the gap if not enough humans join. */
+    minBalls: number;
+  };
+  chaos: {
+    /** Random gap between chaos events (shockwave, swirl, quake) during a fight. */
+    minGapSeconds: number;
+    maxGapSeconds: number;
   };
   commands: {
     /** Minimum gap between any two commands from the same viewer. */
@@ -60,7 +59,6 @@ export interface GameConfig {
 export const DEFAULT_CONFIG: GameConfig = {
   round: {
     joinWindowSeconds: 45,
-    maxFightSeconds: 180,
     winnerScreenSeconds: 10,
     countdownSeconds: 5,
     maxPlayers: 60,
@@ -68,11 +66,13 @@ export const DEFAULT_CONFIG: GameConfig = {
   arena: {
     shrinkDelaySeconds: 10,
     shrinkDurationSeconds: 150,
-    minRadiusFraction: 0.12,
   },
   bots: {
-    humanThreshold: 4,
-    fillTo: 6,
+    minBalls: 12,
+  },
+  chaos: {
+    minGapSeconds: 12,
+    maxGapSeconds: 20,
   },
   commands: {
     perUserCooldownSeconds: 2,

@@ -1,19 +1,20 @@
 {
   "round": {
     "joinWindowSeconds": 45,
-    "maxFightSeconds": 180,
     "winnerScreenSeconds": 10,
     "countdownSeconds": 5,
     "maxPlayers": 60
   },
   "arena": {
     "shrinkDelaySeconds": 10,
-    "shrinkDurationSeconds": 150,
-    "minRadiusFraction": 0.12
+    "shrinkDurationSeconds": 150
   },
   "bots": {
-    "humanThreshold": 4,
-    "fillTo": 6
+    "minBalls": 12
+  },
+  "chaos": {
+    "minGapSeconds": 12,
+    "maxGapSeconds": 20
   },
   "commands": {
     "perUserCooldownSeconds": 2,

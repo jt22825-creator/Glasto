@@ -4,6 +4,7 @@
 //   alice !colour mint     -> "alice" picks a colour
 //   superchat alice 5      -> "alice" sends a $5 Super Chat
 //   sponsor alice          -> "alice" becomes a member
+//   flood 40               -> 40 new fake viewers all type !join at once
 //   pause / resume         -> stop or start the random viewers
 import { createInterface } from 'node:readline';
 import type { GameConfig } from '../../shared/config.ts';
@@ -35,6 +36,7 @@ export class SimulatorSource implements ChatSource {
   readonly name = 'simulator';
   private timer: NodeJS.Timeout | undefined;
   private paused = false;
+  private floodCount = 0;
   private viewers: Viewer[];
   private typed = new Map<string, Viewer>();
   private rl: ReturnType<typeof createInterface> | undefined;
@@ -56,7 +58,7 @@ export class SimulatorSource implements ChatSource {
 
     this.rl = createInterface({ input: process.stdin });
     this.rl.on('line', (line) => this.handleTyped(line.trim(), emit));
-    console.log('[sim] Type "<name> <message>", "superchat <name> <dollars>", "sponsor <name>", "pause" or "resume".');
+    console.log('[sim] Type "<name> <message>", "superchat <name> <dollars>", "sponsor <name>", "flood <count>", "pause" or "resume".');
   }
 
   private viewerNamed(name: string): Viewer {
@@ -74,6 +76,13 @@ export class SimulatorSource implements ChatSource {
     if (first === 'pause' || first === 'resume') {
       this.paused = first === 'pause';
       console.log(`[sim] random viewers ${this.paused ? 'paused' : 'resumed'}`);
+    } else if (first === 'flood') {
+      const count = Math.min(200, Number(second) || 20);
+      for (let i = 0; i < count; i++) {
+        const v = makeViewer(1000 + this.floodCount++);
+        setTimeout(() => emit({ kind: 'text', viewer: v, text: '!join' }), Math.random() * 3000);
+      }
+      console.log(`[sim] ${count} fake viewers are joining`);
     } else if (first === 'superchat' && second) {
       const dollars = Number(third ?? 5) || 5;
       emit({

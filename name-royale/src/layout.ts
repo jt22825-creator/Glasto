@@ -15,35 +15,43 @@ export interface Layout {
   width: number;
   height: number;
   arena: { x: number; y: number; radius: number };
-  /** Round number + big timer. */
+  /** Round number, phase, players left and the big timer. */
   hud: Rect;
-  /** "Type !join to play" banner. */
+  /** "Type !join to play" banner. Always visible. */
   joinBanner: Rect;
   leaderboard: Rect & { rows: number };
-  /** Where the event feed and pop-ups (e.g. !stats) appear. */
-  feed: Rect;
+  /** Recent events (joins, eliminations). */
+  feed: Rect & { lines: number };
+  /** Pop-up cards for !stats and Super Chat thank-yous. */
+  toast: Rect;
+  /** Size of the "Type !join to play" text. */
+  bannerFontSize: number;
 }
 
 const LANDSCAPE: Layout = {
   name: 'landscape',
   width: 1920,
   height: 1080,
-  arena: { x: 960, y: 560, radius: 440 },
-  hud: { x: 40, y: 40, w: 380, h: 220 },
-  joinBanner: { x: 560, y: 24, w: 800, h: 80 },
-  leaderboard: { x: 1500, y: 40, w: 380, h: 640, rows: 10 },
-  feed: { x: 40, y: 300, w: 380, h: 740 },
+  arena: { x: 960, y: 590, radius: 440 },
+  hud: { x: 40, y: 40, w: 400, h: 300 },
+  joinBanner: { x: 520, y: 24, w: 880, h: 96 },
+  leaderboard: { x: 1480, y: 40, w: 400, h: 640, rows: 8 },
+  feed: { x: 40, y: 370, w: 400, h: 670, lines: 14 },
+  toast: { x: 1480, y: 710, w: 400, h: 330 },
+  bannerFontSize: 64,
 };
 
 const VERTICAL: Layout = {
   name: 'vertical',
   width: 1080,
   height: 1920,
-  arena: { x: 540, y: 960, radius: 500 },
-  hud: { x: 40, y: 40, w: 1000, h: 170 },
-  joinBanner: { x: 90, y: 240, w: 900, h: 100 },
-  leaderboard: { x: 40, y: 1500, w: 1000, h: 380, rows: 5 },
-  feed: { x: 40, y: 380, w: 1000, h: 60 },
+  arena: { x: 540, y: 950, radius: 480 },
+  hud: { x: 40, y: 40, w: 1000, h: 190 },
+  joinBanner: { x: 60, y: 250, w: 960, h: 110 },
+  leaderboard: { x: 40, y: 1540, w: 1000, h: 340, rows: 5 },
+  feed: { x: 40, y: 380, w: 1000, h: 56, lines: 1 },
+  toast: { x: 90, y: 1440, w: 900, h: 86 },
+  bannerFontSize: 76,
 };
 
 export function pickLayout(search = window.location.search): Layout {
