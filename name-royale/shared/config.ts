@@ -43,10 +43,28 @@ export interface GameConfig {
     wsPort: number;
   };
   youtube: {
+    /** A specific stream's video ID or URL. Leave empty to find your current live stream automatically. */
+    videoId: string;
+    /** Use the low-latency streaming connection (streamList). If it fails, the server falls back to polling. */
+    useStreamList: boolean;
+    /** Never poll faster than this, even if YouTube allows it. */
+    minPollSeconds: number;
     /** Daily quota for your Google Cloud project (default 10,000). */
     dailyQuotaUnits: number;
-    /** Stop polling once this fraction of the daily quota is used. */
+    /** Above this fraction of the daily quota, switch to slow polling. */
+    quotaSaverFraction: number;
+    /** Poll interval in slow-polling mode. */
+    saverPollSeconds: number;
+    /** Stop reading chat once this fraction of the daily quota is used. */
     quotaStopFraction: number;
+    /** Estimated quota cost of one liveChatMessages.list call. */
+    costListCall: number;
+    /** Estimated quota cost of opening a streamList connection. */
+    costStreamOpen: number;
+    /** Estimated quota cost of each batch of messages streamList sends. */
+    costStreamResponse: number;
+    /** Estimated quota cost of looking up your channel, broadcast or video. */
+    costLookup: number;
   };
   simulator: {
     /** Number of fake viewers. */
@@ -84,8 +102,17 @@ export const DEFAULT_CONFIG: GameConfig = {
     wsPort: 8787,
   },
   youtube: {
+    videoId: '',
+    useStreamList: true,
+    minPollSeconds: 2,
     dailyQuotaUnits: 10000,
-    quotaStopFraction: 0.9,
+    quotaSaverFraction: 0.75,
+    saverPollSeconds: 12,
+    quotaStopFraction: 0.95,
+    costListCall: 5,
+    costStreamOpen: 1,
+    costStreamResponse: 1,
+    costLookup: 1,
   },
   simulator: {
     viewers: 25,

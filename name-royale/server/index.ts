@@ -2,7 +2,8 @@
 // Vite dev server that serves the game page, all from one terminal.
 //
 //   node server/index.ts --source=sim       fake chat
-//   node server/index.ts --source=youtube   real YouTube chat (stage 3)
+//   node server/index.ts --source=youtube   real YouTube chat
+//   add --video=<id or URL> to read a specific stream's chat
 //   add --no-game to skip starting the game page server
 import { parseArgs } from 'node:util';
 import { loadConfig, ROOT } from './config.ts';
@@ -12,12 +13,14 @@ import { Leaderboard } from './leaderboard.ts';
 import { cleanViewer, isBanned } from './moderation.ts';
 import { SimulatorSource } from './sources/simulator.ts';
 import { YouTubeSource } from './sources/youtube.ts';
-import type { ChatSource } from './sources/types.ts';
+import { SetupError } from './youtube/oauth.ts';
+import type { ChatEvent, ChatSource } from './sources/types.ts';
 
 const { values: args } = parseArgs({
   options: {
     source: { type: 'string', default: 'sim' },
     'no-game': { type: 'boolean', default: false },
+    video: { type: 'string' },
   },
 });
 
@@ -28,7 +31,7 @@ const leaderboard = new Leaderboard();
 
 let source: ChatSource | undefined;
 if (args.source === 'sim') source = new SimulatorSource(config);
-else if (args.source === 'youtube') source = new YouTubeSource();
+else if (args.source === 'youtube') source = new YouTubeSource(config, { video: args.video });
 else if (args.source !== 'none') {
   console.error(`Unknown --source "${args.source}". Use sim, youtube or none.`);
   process.exit(1);
@@ -51,7 +54,7 @@ hub.handleMessage((msg, fromPrimary) => {
   hub.broadcast({ type: 'leaderboard', entries: leaderboard.top() });
 });
 
-await source?.start((event) => {
+const onChat = (event: ChatEvent) => {
   if (event.kind === 'paid') {
     const viewer = cleanViewer(event.event.viewer);
     if (isBanned(viewer)) return;
@@ -69,7 +72,17 @@ await source?.start((event) => {
   } else {
     hub.broadcast({ type: 'command', viewer, command });
   }
-});
+};
+
+try {
+  await source?.start(onChat);
+} catch (err) {
+  if (err instanceof SetupError) {
+    console.error(`\n[setup] ${err.message}\n`);
+    process.exit(1);
+  }
+  throw err;
+}
 
 if (!args['no-game']) {
   const { createServer } = await import('vite');

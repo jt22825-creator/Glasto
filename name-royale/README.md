@@ -2,13 +2,13 @@
 
 A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat and a ball with their name drops into a round arena. The edge slowly shrinks, balls get knocked off, and the last ball left wins.
 
-> **Status: Stage 2 (the game, driven by fake chat).** Full rounds work with the simulator. The leaderboard is kept in memory until Stage 4, so it resets when you restart the server.
+> **Status: Stage 3 (real YouTube chat).** The game runs with the simulator or with your stream's live chat. The leaderboard is kept in memory until Stage 4, so it resets when you restart the server.
 
 ## Roadmap
 
 - [x] **Stage 1:** project scaffold, this README, server ↔ game connection, fake chat simulator
 - [x] **Stage 2:** the game itself (rounds, physics, shrinking arena, bots, podium), driven by the simulator
-- [ ] **Stage 3:** real YouTube live chat
+- [x] **Stage 3:** real YouTube live chat
 - [ ] **Stage 4:** leaderboard saved to disk
 - [ ] **Stage 5:** polish: sound, particles, screen shake, final vertical layout
 
@@ -36,11 +36,12 @@ A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat 
 |---|---|
 | `phaser` (v3) | Game engine. Draws the game, includes the Matter.js physics engine, and handles text, tweens, particles and sound. One package covers all of these. |
 | `ws` | Lets the Node server talk to the game page over a WebSocket. Node can't host a WebSocket server without it. |
+| `@grpc/grpc-js`, `@grpc/proto-loader` | Connect to YouTube's `streamList` chat stream, which only speaks gRPC. Both are Google's official pure-JavaScript packages, so nothing needs compiling on Windows or Mac. If they ever fail to load, the server polls chat instead. |
 | `vite` *(dev)* | Serves the game page to OBS and reloads it instantly while you edit code. |
 | `typescript` *(dev)* | Type-checks the code (`npm run typecheck`). It isn't needed to run the game. |
 | `@types/node`, `@types/ws` *(dev)* | Type information for the two above. No code runs from these. |
 
-YouTube is called with Node's built-in `fetch`, so there's no Google SDK. Node runs the server's TypeScript files directly, so no build step is needed for the server either.
+Other YouTube calls use Node's built-in `fetch`, so there's no big Google SDK. Node runs the server's TypeScript files directly, so no build step is needed for the server either.
 
 ---
 
@@ -166,9 +167,59 @@ No billing account is needed. The YouTube Data API is free within its daily quot
 ### 3e. Good to know
 - **The sign-in expires every 7 days while the app is in "Testing".** That's a Google rule. When it expires, the server opens the sign-in page again. To stop this, go to **Audience** and click **Publish app**. You don't need Google's verification because you're the only user. You'll see a "Google hasn't verified this app" warning when you sign in. Click **Advanced → Go to Name Royale** to continue.
 - **Brand channels:** if your channel is a Brand Account, pick the channel (not your personal profile) on the sign-in screen.
-- **Daily quota:** new projects get 10,000 units a day, and every chat read uses some. The server tracks usage, logs it, and slows down before hitting the limit. You can see usage at **APIs & Services → YouTube Data API v3 → Quotas & System Limits**. Stage 3 explains this in more detail.
+- **Daily quota:** new projects get 10,000 units a day, and every chat read uses some. See [Quota](#quota) below.
+
+### 3f. Test it
+With `client_secret.json` in place, run:
+```
+npm run youtube:check
+```
+The first time, your browser opens Google's sign-in page. Pick the account, or Brand Account, that owns your channel and allow the read-only YouTube permission. The terminal then shows your channel's name.
+
+If you're live while you run it, it also listens to your chat for 20 seconds. Type in your own chat to see the messages appear. A quick way to test without an audience: start an **Unlisted** stream in YouTube Studio, run the check, then end the stream.
 
 ---
+
+## Going live with YouTube chat
+
+1. Start your stream in OBS / YouTube Studio as usual.
+2. Run:
+   ```
+   npm run live
+   ```
+   This starts the server, the game page and the YouTube chat reader. You don't have to go live first. If you're not live yet, the server checks again every minute.
+3. You'll see lines like:
+   ```
+   [youtube] Signed in as channel: Your Channel
+   [youtube] Reading chat for "Name Royale – type !join"
+   [youtube] Using streamList (live push).
+   ```
+4. When the stream ends, the server notices and waits for the next one.
+
+**If it picks the wrong stream** (or can't find it), point it at the video directly:
+```
+npm run live -- --video=https://youtube.com/live/VIDEO_ID
+```
+or put the ID or URL in `youtube.videoId` in the config.
+
+### How chat is read
+- **streamList (default):** YouTube pushes each message to the server the moment it's sent, over one long-lived connection. It's fast and light on quota. YouTube closes the connection now and then. The server reconnects straight away and picks up exactly where it left off.
+- **Polling (fallback):** if streaming is refused or fails 3 times within 2 minutes, the server switches to `liveChatMessages.list`, asking for new messages as often as YouTube allows (usually every few seconds). Set `youtube.useStreamList` to `false` to always poll.
+- Messages from before the server started are ignored, so old `!join`s don't count. Each message is handled only once, even across reconnects.
+- **Super Chats and Super Stickers** call the game's `onSuperChat` hook. **New members** call `onSponsor`. For now these show a thank-you card. A Super Chat whose message starts with `!` (e.g. `!join`) also works as a normal command.
+
+### Quota
+Every project gets **10,000 units per day**. The count resets at midnight Pacific time (8am UK time for most of the year). Google doesn't let programs read their live usage, so the server keeps its own **estimate** in `data/quota.json`. It logs the estimate every 10 minutes and at every 10% step:
+```
+[quota] ~2410 / 10000 units used today (24%, estimate): stream 2380, lookup 30
+```
+- Above **75%** it switches to slow polling (every 12 s).
+- Above **95%** it stops reading chat until the quota resets. The game keeps running with bots.
+- If YouTube itself says the quota is used up, the server pauses straight away, whatever the estimate says.
+
+**Calibrate after your first stream:** compare the estimate with the real number at **Google Cloud Console → APIs & Services → YouTube Data API v3 → Quotas & System Limits**. If they differ, adjust the `youtube.cost*` settings. The defaults are `costListCall` 5, `costStreamOpen` 1, `costStreamResponse` 1 and `costLookup` 1.
+
+Google doesn't clearly document `streamList`'s exact cost. Other developers report roughly 1,500–2,000 units per hour of busy chat, which would mean about 5 hours of streaming a day on the free quota. If you need more, request a quota increase. Search for "YouTube API Services quota extension" in the Google Cloud docs. Google reviews these requests and they take a while.
 
 ## 4. OBS setup
 
@@ -252,8 +303,14 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | `commands.statsCooldownSeconds` | 30 | Cooldown for `!stats` |
 | `commands.boostsPerRound` | 1 | Boosts per viewer per round |
 | `server.wsPort` | 8787 | Port the game page uses to reach the server |
+| `youtube.videoId` | "" | A specific stream's video ID or URL. Leave empty to find your live stream automatically. |
+| `youtube.useStreamList` | true | Use streamList (live push). `false` = always poll. |
+| `youtube.minPollSeconds` | 2 | Never poll faster than this |
 | `youtube.dailyQuotaUnits` | 10000 | Your project's daily API quota |
-| `youtube.quotaStopFraction` | 0.9 | Stop reading chat at this fraction of the quota |
+| `youtube.quotaSaverFraction` | 0.75 | Switch to slow polling above this fraction of the quota |
+| `youtube.saverPollSeconds` | 12 | Poll interval in slow-polling mode |
+| `youtube.quotaStopFraction` | 0.95 | Stop reading chat above this fraction of the quota |
+| `youtube.costListCall` / `costStreamOpen` / `costStreamResponse` / `costLookup` | 5 / 1 / 1 / 1 | Estimated quota cost of each kind of call. See [Quota](#quota). |
 | `simulator.viewers` | 25 | Number of fake viewers |
 | `simulator.messagesPerSecond` | 1.5 | Average rate of fake chat messages |
 
@@ -283,9 +340,17 @@ name-royale/
 │   ├── commands.ts        ← turns chat text into commands, cooldowns
 │   ├── moderation.ts      ← ban list and name filter
 │   ├── leaderboard.ts     ← wins, rounds and streaks
-│   └── sources/           ← where chat comes from
-│       ├── simulator.ts   ← fake chat
-│       └── youtube.ts     ← real YouTube chat (Stage 3)
+│   ├── sources/           ← where chat comes from
+│   │   ├── simulator.ts   ← fake chat
+│   │   └── youtube.ts     ← real YouTube chat: find stream, stream or poll, quota levels
+│   └── youtube/
+│       ├── oauth.ts       ← Google sign-in and token refresh
+│       ├── api.ts         ← REST calls (channel, broadcast, video, chat polling)
+│       ├── stream.ts      ← streamList over gRPC
+│       ├── live_chat.proto← the streamList message format
+│       ├── messages.ts    ← turns YouTube messages into game events
+│       ├── quota.ts       ← daily quota estimate
+│       └── check.ts       ← npm run youtube:check
 ├── src/                   ← the game page (runs in OBS)
 │   ├── main.ts
 │   ├── layout.ts          ← 9:16 and 16:9 screen layouts, and the covered areas
@@ -297,6 +362,7 @@ name-royale/
 │   │   ├── bots.ts        ← bot names
 │   │   └── paidEvents.ts  ← onSuperChat / onSponsor hooks for later extras
 │   └── ui/                ← HUD, leaderboard, feed, pop-ups, podium
+├── tests/                 ← npm test (uses fake YouTube servers, no account needed)
 └── index.html
 ```
 
@@ -305,7 +371,9 @@ name-royale/
 | Command | What it does |
 |---|---|
 | `npm run sim` | Server + game page, with fake chat |
-| `npm run live` | Server + game page, with real YouTube chat (Stage 3) |
+| `npm run live` | Server + game page, with real YouTube chat. Add `-- --video=<id or URL>` to choose the stream. |
+| `npm run youtube:check` | Sign in and test your YouTube setup without starting the game |
+| `npm test` | Run the automated tests |
 | `npm run server -- --no-game` | Server only, with no chat source and no game page (for debugging) |
 | `npm run game` | Game page only |
 | `npm run typecheck` | Check the code for type errors |
@@ -316,3 +384,9 @@ name-royale/
 - **`address already in use`**: the server is already running in another terminal. Close that one first.
 - **Page says "waiting for server…"**: the server isn't running, or `server.wsPort` was changed. If you change the port, add `?ws=ws://localhost:<port>` to the page URL.
 - **OBS shows a blank or black box**: check the URL in a normal browser first. Then right-click the source and choose **Refresh**.
+- **`Missing ...client_secret.json`**: see section 3d. The file must be in `name-royale/secrets/`.
+- **`YouTube API error 403 (accessNotConfigured)`**: the YouTube Data API v3 isn't turned on for your project (section 3b).
+- **`Error 403: access_denied` in the browser**: your Google account isn't a test user (section 3c, step 5).
+- **The sign-in page keeps coming back every week**: that's the 7-day limit in Testing mode (section 3e).
+- **"No live stream found"** while you are live: you signed in with a different account or Brand Account than the one streaming. Delete `secrets/token.json` and sign in again, picking the channel. Or use `--video=`.
+- **Commands are ignored**: check that live chat is on, the stream isn't "made for kids", and the viewer isn't in `config/banlist.txt`. Each viewer also has a short cooldown.

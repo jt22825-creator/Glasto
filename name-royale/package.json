@@ -10,12 +10,16 @@
   "scripts": {
     "sim": "node server/index.ts --source=sim",
     "live": "node server/index.ts --source=youtube",
+    "youtube:check": "node server/youtube/check.ts",
     "server": "node server/index.ts --source=none",
     "game": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/youtube.test.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.5",
+    "@grpc/proto-loader": "^0.8.1",
     "phaser": "^3.90.0",
     "ws": "^8.18.3"
   },
