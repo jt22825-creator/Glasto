@@ -152,6 +152,25 @@ export class Sfx {
     this.tone(220, 0.25, { type: 'sawtooth', gain: 0.14, slideTo: 880 });
   }
 
+  /** A pinball bumper fires a ball away. */
+  bumper(): void {
+    if (!this.allow('bumper', 50)) return;
+    this.tone(320, 0.18, { type: 'sine', gain: 0.3, slideTo: 980 });
+    this.tone(640, 0.08, { type: 'square', gain: 0.07 });
+  }
+
+  /** The Sweeper arrives. */
+  sweeper(): void {
+    this.noise(0.9, { type: 'bandpass', freq: 200, slideTo: 1800, q: 3, gain: 0.45, attack: 0.2 });
+    this.tone(110, 0.8, { type: 'sawtooth', gain: 0.1, slideTo: 220, attack: 0.1 });
+  }
+
+  /** Double / triple / mega knock-out: a rising run of notes, longer for bigger combos. */
+  combo(n: number): void {
+    const notes = [659, 784, 988, 1175, 1319].slice(0, Math.min(5, n + 1));
+    notes.forEach((f, i) => this.tone(f, 0.14, { type: 'square', gain: 0.12, at: i * 0.07 }));
+  }
+
   /** A ball goes off the edge. `big` for the last few eliminations. */
   eliminate(big = false): void {
     this.tone(big ? 520 : 700, big ? 0.55 : 0.32, { type: 'triangle', gain: big ? 0.3 : 0.2, slideTo: 90 });

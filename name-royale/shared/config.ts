@@ -100,15 +100,15 @@ export const DEFAULT_CONFIG: GameConfig = {
     maxPlayers: 60,
   },
   arena: {
-    shrinkDelaySeconds: 10,
-    shrinkDurationSeconds: 150,
+    shrinkDelaySeconds: 3,
+    shrinkDurationSeconds: 44,
   },
   bots: {
     minBalls: 12,
   },
   chaos: {
-    minGapSeconds: 12,
-    maxGapSeconds: 20,
+    minGapSeconds: 5,
+    maxGapSeconds: 8,
   },
   commands: {
     perUserCooldownSeconds: 2,

@@ -19,6 +19,14 @@ export class Ball {
   heading = Math.random() * Math.PI * 2;
   boostsUsed = 0;
   out = false;
+  /** Next time (simulated ms) this ball charges at a rival. */
+  nextDash = 0;
+  /** Who or what last hit this ball, for knock-out credit. */
+  lastHitBy: Ball | undefined;
+  lastHazard: 'sweeper' | 'bumper' | undefined;
+  lastHitAt = -Infinity;
+  /** Knock-outs this round. */
+  kos = 0;
 
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Container;
@@ -42,7 +50,7 @@ export class Ball {
       restitution: 0.9,
       friction: 0,
       frictionStatic: 0,
-      frictionAir: 0.025,
+      frictionAir: 0.015,
       density: 0.002,
       label: 'ball',
     });

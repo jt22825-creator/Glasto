@@ -126,15 +126,21 @@ There's also a light **looping music track**. Turn it off with `audio.music: fal
 1. **Join (45 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
 
    **Crowded rounds:** when more than 18 balls are alive, only 15 show full names and the rest show initials (e.g. `NG` for NeonGecko). While people are joining, the 15 newest arrivals get full names. During the fight, it's the 15 nearest the edge, because they're the ones about to go.
-2. **Fight.** If fewer than 12 balls joined, bots (`bot_pebble`, `bot_waffle`, …) fill the gap. After 10 seconds the yellow edge starts closing in, and it reaches nothing after another 150 seconds. Any ball whose centre crosses the edge is out. Balls drift towards the middle, so the pack gets squeezed as the arena shrinks. Every 12–20 seconds a chaos event fires:
-   - **Shockwave:** a red ring warns you, then everything nearby is blasted outward.
-   - **Swirl:** the whole arena spins for a few seconds.
-   - **Quake:** every ball gets a random shove.
+2. **Fight (30–50 s).** If fewer than 12 balls joined, bots (`bot_pebble`, `bot_waffle`, …) fill the gap. It's built to keep moving:
+   - **Every ball keeps charging at its nearest rival**, so there are constant collisions. A ball that knocks another out gets the credit ("NeonGecko bonked PixelMoth out!", "+1 KO"), and knock-outs close together get called out as DOUBLE / TRIPLE / MEGA KO.
+   - **The Sweeper** appears after 8 s: a spinning pink arm that bats balls around and speeds up as the round goes on.
+   - **Three pinball bumpers** slowly orbit the arena and fire balls away on contact, until the arena gets too small for them.
+   - **Chaos events** every 5–8 s:
+     - **Shockwave:** a red ring warns you, then everything nearby is blasted outward.
+     - **Swirl:** the whole pack spins round.
+     - **Quake:** every ball gets a random shove.
+   - **The yellow edge** starts closing after 3 s and is gone by 47 s. Any ball that goes partly over the edge is out.
+   - **A pacing director** keeps fights between about 30 and 50 seconds whatever the crowd size. Things start gentle and build up. If players are going out too fast, everything calms down; if the round is stalling, it livens up.
 3. **Final two.** The screen edge pulses red and both balls get a "♥ 1 HP" tag.
 4. **Winner (10 s).** A podium shows 1st, 2nd and 3rd, plus the winner's all-time wins.
 5. **Countdown (5 s),** then the next join window opens. A `!join` typed after the window closes is queued for the next round.
 
-Rounds take about 3½ minutes in total. The edge always closes completely, so every round ends with exactly one winner. If the last balls go out at the same moment, the one nearest the centre wins.
+Rounds take about 2 minutes in total (45 s to join, 30–50 s of fighting, then the podium and countdown). The edge always closes completely, so every round ends with exactly one winner. If the last balls go out at the same moment, the one nearest the centre wins.
 
 ### Page address options
 
@@ -357,10 +363,10 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | `round.winnerScreenSeconds` | 10 | How long the podium shows |
 | `round.countdownSeconds` | 5 | Countdown before the next join window |
 | `round.maxPlayers` | 60 | Most balls in one round. Extra joiners go into the next round. |
-| `arena.shrinkDelaySeconds` | 10 | Fight time before the edge starts shrinking |
-| `arena.shrinkDurationSeconds` | 150 | Time for the edge to close completely. This is the longest a fight can last after the delay. Lower it for shorter rounds. |
+| `arena.shrinkDelaySeconds` | 3 | Fight time before the edge starts shrinking |
+| `arena.shrinkDurationSeconds` | 44 | Time for the edge to close completely. This is the longest a fight can last after the delay. Lower it for shorter rounds. |
 | `bots.minBalls` | 12 | Every round has at least this many balls. Bots fill the gap. |
-| `chaos.minGapSeconds` / `chaos.maxGapSeconds` | 12 / 20 | Random gap between chaos events |
+| `chaos.minGapSeconds` / `chaos.maxGapSeconds` | 5 / 8 | Random gap between chaos events |
 | `commands.perUserCooldownSeconds` | 2 | Minimum gap between any two commands from one viewer |
 | `commands.colourCooldownSeconds` | 20 | Cooldown for `!colour` |
 | `commands.statsCooldownSeconds` | 30 | Cooldown for `!stats` |
@@ -434,6 +440,7 @@ name-royale/
 │   ├── game/
 │   │   ├── GameScene.ts   ← the round loop, physics and chaos events
 │   │   ├── Effects.ts     ← particles, flashes, confetti
+│   │   ├── Hazards.ts     ← the Sweeper and pinball bumpers
 │   │   ├── Ball.ts        ← one player's ball
 │   │   ├── bots.ts        ← bot names
 │   │   └── paidEvents.ts  ← onSuperChat / onSponsor hooks for later extras

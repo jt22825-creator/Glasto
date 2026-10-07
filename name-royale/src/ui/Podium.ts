@@ -26,7 +26,7 @@ export class Podium {
     this.layout = layout;
   }
 
-  show(round: number, places: PodiumPlace[]): void {
+  show(round: number, places: PodiumPlace[], koLine?: string): void {
     const pending = this.pendingStats;
     this.hide();
     this.pendingStats = pending;
@@ -80,8 +80,9 @@ export class Podium {
       }
     }
 
+    if (koLine) root.add(bigText(s, cx, cy + R * 0.7, koLine, 32, THEME.textAccent).setOrigin(0.5));
     if (this.pendingStats) this.setWinnerStats(this.pendingStats);
-    this.countdown = bigText(s, cx, cy + R * 0.8, '', 44, THEME.textAccent).setOrigin(0.5);
+    this.countdown = bigText(s, cx, cy + R * 0.84, '', 40, THEME.text).setOrigin(0.5);
     root.add(this.countdown);
 
     root.setAlpha(0);

@@ -16,17 +16,28 @@ import { Toasts } from '../ui/Toasts.ts';
 import { Sfx } from '../audio/Sfx.ts';
 import { Ball } from './Ball.ts';
 import { Effects } from './Effects.ts';
+import { Hazards } from './Hazards.ts';
 import { pickBotNames } from './bots.ts';
 import { PaidHooks, type GameApi } from './paidEvents.ts';
 
 type Phase = 'join' | 'fight' | 'podium' | 'countdown' | 'ended';
 
 // Movement tuning, in pixels per physics step (1/60 s).
-const WANDER = 0.045; // each ball's own random wandering
+const WANDER = 0.06; // each ball's own random wandering
 // Pull towards the middle, scaled to the *current* arena size. The crowd
 // shrinks with the arena, so balls at the edge get squeezed out by the pack.
-const CENTRE_PULL = 0.1;
-const MAX_SPEED = 16;
+const CENTRE_PULL = 0.15;
+const MAX_SPEED = 18;
+/** Every couple of seconds each ball charges at its nearest rival. */
+const DASH_KICK = 3.2;
+const DASH_EVERY_MS: [number, number] = [1200, 3000];
+/** A hit counts as a knock-out if the ball goes out within this long. */
+const KO_CREDIT_MS = 2500;
+/** Knock-outs this close together make a combo (DOUBLE KO!). */
+const COMBO_MS = 1500;
+/** Fights aim to end around here (seconds); the pacing director steers towards it. */
+const TARGET_FIGHT_S = 46;
+const MIN_FIGHT_S = 30;
 const BOOST_KICK = 6;
 const QUAKE_KICK = 4;
 /** Speed (pixels per step) at the arena's edge during a swirl. */
@@ -47,8 +58,6 @@ function quickConfig(c: GameConfig): GameConfig {
   return {
     ...c,
     round: { ...c.round, joinWindowSeconds: 12, winnerScreenSeconds: 6, countdownSeconds: 3 },
-    arena: { shrinkDelaySeconds: 3, shrinkDurationSeconds: 40 },
-    chaos: { minGapSeconds: 5, maxGapSeconds: 8 },
   };
 }
 
@@ -109,6 +118,15 @@ export class GameScene extends Phaser.Scene implements GameApi {
    */
   private simTime = 0;
   private fightStart = 0;
+  private hazards!: Hazards;
+  private ballByBody = new Map<MatterJS.BodyType, Ball>();
+  /** How hard everything pushes right now: the round's ramp-up times the pacing director's adjustment. */
+  private intensity = 1;
+  /** Pacing director: below 1 calms things when players go out too fast, above 1 livens up a stalled round. */
+  private pace = 1;
+  private roundProgress = 0;
+  private fightCount = 0;
+  private recentKos: number[] = [];
 
   constructor(layout: Layout, net: Net, quick: boolean) {
     super('game');
@@ -139,15 +157,13 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.paid = new PaidHooks(this);
     this.board.setEntries([]);
 
-    // Soft "bonk" when balls hit each other hard enough.
-    this.matter.world.on('collisionstart', (event: Phaser.Physics.Matter.Events.CollisionStartEvent) => {
-      if (this.phase !== 'fight') return;
-      for (const { bodyA, bodyB } of event.pairs) {
-        if (bodyA.label !== 'ball' || bodyB.label !== 'ball') continue;
-        const rel = Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y);
-        this.sfx.bump(rel / 8);
-      }
-    });
+    this.hazards = new Hazards(this, L);
+    this.hazards.onSweeperAppears = () => {
+      this.announce('SWEEPER!', THEME.textAccent);
+      this.sfx.sweeper();
+    };
+    this.matter.world.on('collisionstart', (e: Phaser.Physics.Matter.Events.CollisionStartEvent) => this.onContacts(e.pairs, true));
+    this.matter.world.on('collisionactive', (e: Phaser.Physics.Matter.Events.CollisionActiveEvent) => this.onContacts(e.pairs, false));
 
     const b = L.joinBanner;
     this.add.graphics().setDepth(50).fillStyle(THEME.accent).fillRoundedRect(b.x, b.y, b.w, b.h, 24).lineStyle(6, THEME.outline).strokeRoundedRect(b.x, b.y, b.w, b.h, 24);
@@ -295,6 +311,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     const ball = new Ball(this, viewer, isBot, colour, best.x, best.y, this.targetRadius(this.balls.length + 1));
     this.balls.push(ball);
     this.byId.set(viewer.id, ball);
+    this.ballByBody.set(ball.body, ball);
 
     // "Drop in" from above the camera.
     ball.dropScale = 2.6;
@@ -352,6 +369,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     for (const b of this.balls) b.destroy();
     this.balls = [];
     this.byId.clear();
+    this.ballByBody.clear();
     this.eliminated = [];
   }
 
@@ -396,6 +414,19 @@ export class GameScene extends Phaser.Scene implements GameApi {
     const c = this.config.chaos;
     this.fightStart = this.simTime;
     this.nextChaosAt = this.simTime + Phaser.Math.Between(c.minGapSeconds, c.maxGapSeconds) * 1000;
+    this.fightCount = this.balls.length;
+    this.pace = 1;
+    this.intensity = 0.45;
+    this.roundProgress = 0;
+    this.recentKos = [];
+    // Everyone starts safely inside the arena.
+    const { x: cx, y: cy, radius: R0 } = this.layout.arena;
+    for (const b of this.balls) {
+      b.nextDash = this.simTime + Phaser.Math.Between(400, 2500);
+      const d = Math.hypot(b.x - cx, b.y - cy);
+      if (d > R0 * 0.8) this.matter.body.setPosition(b.body, { x: cx + ((b.x - cx) / d) * R0 * 0.75, y: cy + ((b.y - cy) / d) * R0 * 0.75 }, false);
+    }
+    this.hazards.start();
     this.hud.setPhase('FIGHT!', THEME.textAccent);
     this.announce('FIGHT!', THEME.textAccent);
     this.sfx.go();
@@ -428,11 +459,14 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.time.delayedCall(WINNER_BEAT_MS, () => this.fx.confetti(ax, ay - aR, aR * 2));
     this.tweens.add({ targets: winner, dropScale: 1.6, duration: 500, ease: 'Back.easeOut' });
     const places = order.slice(0, 3).map((b) => ({ name: b.viewer.name, colour: b.colour, isBot: b.isBot }));
+    const koKing = [...this.balls].sort((a, z) => z.kos - a.kos)[0];
+    const koLine = koKing && koKing.kos >= 2 ? `Most KOs: ${clip(koKing.viewer.name, 14)} (${koKing.kos})` : undefined;
+    this.hazards.stop();
     this.time.delayedCall(WINNER_BEAT_MS, () => {
       if (this.phase !== 'podium') return;
       this.clearBalls();
       this.resetArena();
-      this.podium.show(this.round, places);
+      this.podium.show(this.round, places, koLine);
     });
   }
 
@@ -504,6 +538,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
   }
 
   private resetArena(): void {
+    this.hazards?.stop();
     this.sfx?.stopHeartbeat();
     this.sfx?.music.restore();
     this.lastTick = -1;
@@ -560,6 +595,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     let steps = 0;
     while (this.stepAccumulator >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
       if (moving) this.moveBalls(this.timeScale, this.simTime);
+      if (this.phase === 'fight') this.hazards.step(STEP_MS * this.timeScale, this.arenaR, this.intensity, this.roundProgress);
       this.matter.world.step(STEP_MS);
       this.simTime += STEP_MS * this.timeScale;
       this.stepAccumulator -= STEP_MS;
@@ -572,6 +608,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     }
     for (const b of this.balls) if (!b.out) b.sync();
     this.drawArena(now);
+    this.hazards.draw();
   }
 
   private updateFight(now: number): void {
@@ -580,6 +617,9 @@ export class GameScene extends Phaser.Scene implements GameApi {
     const progress = Phaser.Math.Clamp((elapsed - delay) / duration, 0, 1);
     this.arenaR = this.layout.arena.radius * (1 - progress);
 
+    this.roundProgress = Phaser.Math.Clamp(elapsed / (delay + duration), 0, 1);
+    this.updatePacing(elapsed);
+
     const closesIn = delay + duration - elapsed;
     this.hud.setTimer(closesIn, closesIn <= 10);
     if (!this.finalTwo) this.hud.setPhase(elapsed < delay ? 'FIGHT!' : 'ARENA SHRINKING', elapsed < delay ? THEME.textAccent : THEME.text);
@@ -587,7 +627,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     if (now >= this.nextChaosAt) {
       this.chaosEvent();
       const c = this.config.chaos;
-      this.nextChaosAt = now + Phaser.Math.FloatBetween(c.minGapSeconds, c.maxGapSeconds) * 1000;
+      this.nextChaosAt = now + (Phaser.Math.FloatBetween(c.minGapSeconds, c.maxGapSeconds) * 1000) / this.pace;
     }
 
     // Anyone whose centre is past the edge is out. If that would knock out
@@ -596,7 +636,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     const alive = this.alive();
     const outside = alive
       .map((b) => ({ b, d: Math.hypot(b.x - cx, b.y - cy) }))
-      .filter((o) => o.d > this.arenaR)
+      .filter((o) => o.d > this.arenaR + o.b.radius * 0.4) // a little grace: partly over the edge
       .sort((a, z) => z.d - a.d);
     if (outside.length === alive.length) outside.pop();
     for (const { b } of outside) this.eliminate(b);
@@ -605,6 +645,127 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.hud.setAlive(`${remaining.length} left`);
     if (remaining.length === 2 && !this.finalTwo) this.startFinalTwo(remaining);
     if (remaining.length <= 1) this.endRound(remaining[0]);
+  }
+
+  // ---------------------------------------------------------------- action: dashes, hazards, knock-outs
+
+  /** Charge at the nearest rival (with a little wobble), so balls keep crashing into each other. */
+  private dash(b: Ball, now: number): void {
+    const [lo, hi] = DASH_EVERY_MS;
+    b.nextDash = now + Phaser.Math.Between(lo, hi) / Math.max(0.4, this.intensity);
+    let target: Ball | undefined;
+    let best = Infinity;
+    for (const o of this.balls) {
+      if (o === b || o.out) continue;
+      const d = (o.x - b.x) ** 2 + (o.y - b.y) ** 2;
+      if (d < best) {
+        best = d;
+        target = o;
+      }
+    }
+    const a = target ? Math.atan2(target.y - b.y, target.x - b.x) + Phaser.Math.FloatBetween(-0.35, 0.35) : Math.random() * Math.PI * 2;
+    const f = DASH_KICK * this.intensity;
+    b.kick(Math.cos(a) * f, Math.sin(a) * f);
+  }
+
+  private onContacts(pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[], first: boolean): void {
+    if (this.phase !== 'fight') return;
+    for (const { bodyA, bodyB } of pairs) {
+      const a = this.ballByBody.get(bodyA);
+      const b = this.ballByBody.get(bodyB);
+      if (a && b) {
+        if (!first) continue;
+        const rel = Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y);
+        this.sfx.bump(rel / 8);
+        if (rel > 2) {
+          a.lastHitBy = b;
+          b.lastHitBy = a;
+          a.lastHazard = b.lastHazard = undefined;
+          a.lastHitAt = b.lastHitAt = this.simTime;
+        }
+        if (rel > 8) this.fx.hit((a.x + b.x) / 2, (a.y + b.y) / 2);
+        continue;
+      }
+      const ball = a ?? b;
+      const other = a ? bodyB : bodyA;
+      if (!ball || ball.out) continue;
+      if (other.label === 'sweeper') this.sweeperHit(ball, first);
+      else if (other.label === 'bumper' && first) this.bumperHit(ball, other);
+    }
+  }
+
+  /** The Sweeper carries the ball along in the direction it's turning, a bit faster than the arm. */
+  private sweeperHit(ball: Ball, first: boolean): void {
+    const { tx, ty, armSpeed } = this.hazards.sweeperPush(ball.x, ball.y);
+    const v = ball.body.velocity;
+    const target = armSpeed + 0.8 * this.intensity;
+    const dv = Math.max(0, target - (v.x * tx + v.y * ty));
+    ball.kick(tx * dv, ty * dv);
+    if (first) {
+      this.sfx.bump(1);
+      ball.lastHazard = 'sweeper';
+      ball.lastHitBy = undefined;
+      ball.lastHitAt = this.simTime;
+    }
+  }
+
+  private bumperHit(ball: Ball, bumper: MatterJS.BodyType): void {
+    const dx = ball.x - bumper.position.x;
+    const dy = ball.y - bumper.position.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const f = 5.5 * Math.max(0.6, this.intensity);
+    this.matter.body.setVelocity(ball.body, { x: (dx / d) * f, y: (dy / d) * f });
+    this.hazards.bumperHit(bumper);
+    this.sfx.bumper();
+    this.fx.hit(bumper.position.x + (dx / d) * ball.radius, bumper.position.y + (dy / d) * ball.radius, THEME.good);
+    ball.lastHazard = 'bumper';
+    ball.lastHitBy = undefined;
+    ball.lastHitAt = this.simTime;
+  }
+
+  /**
+   * Pacing director. Compares how many are left with where a ~40 s fight
+   * should be, and eases everything up or down so fights land between about
+   * 30 and 50 seconds whatever the crowd size. Early on things also start
+   * gentler and build up.
+   */
+  private updatePacing(elapsed: number): void {
+    const alive = this.alive().length;
+    const expected = 1 - Math.min(1, elapsed / TARGET_FIGHT_S) ** 1.6;
+    const actual = alive / Math.max(1, this.fightCount);
+    let target = 1;
+    if (actual < expected - 0.12) target = 0.25;
+    else if (actual > expected + 0.12) target = 1.6;
+    if (elapsed < MIN_FIGHT_S + 4 && alive <= 4) target = Math.min(target, 0.3);
+    this.pace += (target - this.pace) * 0.03;
+    const ramp = 0.45 + 0.55 * Math.min(1, elapsed / 24);
+    this.intensity = ramp * this.pace;
+  }
+
+  /** Say who knocked whom out, and call out combos. */
+  private creditKnockout(ball: Ball, place: number): void {
+    const name = clip(ball.viewer.name, 14);
+    const recent = this.simTime - ball.lastHitAt < KO_CREDIT_MS;
+    const by = recent ? ball.lastHitBy : undefined;
+    if (by && !by.out) {
+      by.kos++;
+      this.feed.push(`${clip(by.viewer.name, 12)} bonked ${name} out!`, by.isBot ? THEME.textDim : THEME.textAccent);
+      this.popText(by.x, by.y - by.radius - 40, by.kos > 1 ? `${by.kos} KOs` : '+1 KO', THEME.textAccent, 30);
+    } else if (recent && ball.lastHazard === 'sweeper') {
+      this.feed.push(`${name} got swept out!`, ball.isBot ? THEME.textDim : THEME.textDanger);
+    } else if (recent && ball.lastHazard === 'bumper') {
+      this.feed.push(`${name} got bumped out!`, ball.isBot ? THEME.textDim : THEME.textDanger);
+    } else {
+      this.feed.push(`${name} out #${place}`, ball.isBot ? THEME.textDim : THEME.textDanger);
+    }
+
+    this.recentKos = this.recentKos.filter((t) => this.simTime - t < COMBO_MS);
+    this.recentKos.push(this.simTime);
+    const n = this.recentKos.length;
+    if (n >= 2 && place > 2) {
+      this.announce(n === 2 ? 'DOUBLE KO!' : n === 3 ? 'TRIPLE KO!' : 'MEGA KO!', THEME.textAccent);
+      this.sfx.combo(n);
+    }
   }
 
   private eliminate(ball: Ball): void {
@@ -616,10 +777,11 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.cameras.main.shake(big ? 320 : 160, big ? 0.009 : 0.004);
     if (!ball.isBot) this.popText(ball.x, ball.y - ball.radius - 30, 'OUT!', THEME.textDanger, big ? 44 : 32);
     ball.eliminate();
-    this.feed.push(`${clip(ball.viewer.name, 16)} out #${place}`, ball.isBot ? THEME.textDim : THEME.textDanger);
+    this.creditKnockout(ball, place);
     if (this.log) {
       const t = (this.simTime - this.fightStart) / 1000;
-      console.log(`[elim] t=${t.toFixed(1)}s edge=${(this.arenaR / this.layout.arena.radius).toFixed(2)} place=${place}`);
+      const cause = this.simTime - ball.lastHitAt < KO_CREDIT_MS ? (ball.lastHazard ?? 'ball') : 'edge';
+      console.log(`[elim] t=${t.toFixed(1)}s edge=${(this.arenaR / this.layout.arena.radius).toFixed(2)} place=${place} cause=${cause}`);
     }
   }
 
@@ -674,6 +836,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
         ay += ty * dv;
       }
       b.kick(ax * k, ay * k);
+      if (this.phase === 'fight' && now >= b.nextDash) this.dash(b, now);
 
       const v = b.body.velocity;
       const speed = Math.hypot(v.x, v.y);
@@ -710,7 +873,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
    * arena would knock out the whole pack at once and end the round early.
    */
   private chaosStrength(): number {
-    return 0.45 + 0.55 * (this.arenaR / this.layout.arena.radius);
+    return (0.45 + 0.55 * (this.arenaR / this.layout.arena.radius)) * this.intensity;
   }
 
   /** Warn with a pulsing ring, then blast every ball nearby away from that spot. */

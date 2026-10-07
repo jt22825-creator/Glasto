@@ -34,6 +34,11 @@ export class Effects {
     this.scene.tweens.add({ targets: ring, radius: big ? 220 : 130, alpha: 0, duration: big ? 650 : 450, ease: 'Quad.easeOut', onComplete: () => ring.destroy() });
   }
 
+  /** A hard hit: a quick white (or coloured) spark. */
+  hit(x: number, y: number, colour = 0xffffff): void {
+    this.oneShot(x, y, 'fx-dot', { speed: { min: 120, max: 360 }, lifespan: 260, scale: { start: 0.4, end: 0 }, tint: colour }, 8);
+  }
+
   /** A ball drops into the arena: a small dust puff. */
   landing(x: number, y: number, radius: number): void {
     this.oneShot(x, y, 'fx-dot', { speed: { min: 60, max: 180 }, lifespan: 380, scale: { start: radius / 40, end: 0 }, alpha: { start: 0.6, end: 0 }, tint: THEME.floorLine }, 10, 9);
