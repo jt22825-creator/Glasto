@@ -28,6 +28,12 @@ const MAX_SPEED = 16;
 const BOOST_KICK = 6;
 const QUAKE_KICK = 4;
 const WINNER_BEAT_MS = 1400; // pause on the winner before the podium appears
+// In crowded rounds only this many balls show full names: during a fight the
+// ones nearest the edge (most at risk), while joining the newest arrivals.
+// Everyone else shows initials. Full names come back once few enough are left.
+const FULL_NAMES = 15;
+const ALL_NAMES_UP_TO = 18;
+const LABEL_UPDATE_MS = 400;
 
 /** `?quick` in the URL shortens every phase, for testing. */
 function quickConfig(c: GameConfig): GameConfig {
@@ -67,6 +73,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
   private finalTwo = false;
   private lastAnnounce: Phaser.GameObjects.Text | undefined;
   private lastWinnerId: string | undefined;
+  private nextLabelUpdate = 0;
 
   private arenaGfx!: Phaser.GameObjects.Graphics;
   private vignette!: Phaser.GameObjects.Graphics;
@@ -112,6 +119,8 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.bigCountdown = bigText(this, L.arena.x, L.arena.y, '', 240, THEME.textAccent).setOrigin(0.5).setDepth(65);
     this.statusText = bigText(this, L.width - 20, L.height - 12, '', 22, THEME.textDanger).setOrigin(1, 1).setDepth(90);
     this.previewTag = bigText(this, 20, L.height - 12, 'PREVIEW · results not saved', 22, THEME.textDim).setOrigin(0, 1).setDepth(90).setVisible(false);
+
+    if (new URLSearchParams(window.location.search).has('safe')) this.drawCoveredAreas();
 
     this.net.onState((state) => this.statusText.setText(state === 'open' ? '' : '● waiting for server…'));
     this.net.onMessage((msg) => this.handleServer(msg));
@@ -248,6 +257,31 @@ export class GameScene extends Phaser.Scene implements GameApi {
     for (const b of this.balls) b.setRadius(r);
   }
 
+  /** Option (c) for crowded rounds: full names for the 15 that matter most right now, initials for the rest. */
+  private updateLabels(): void {
+    const alive = this.alive();
+    if (alive.length <= ALL_NAMES_UP_TO) {
+      for (const b of alive) b.setShortLabel(false);
+      return;
+    }
+    const { x: cx, y: cy } = this.layout.arena;
+    const ranked =
+      this.phase === 'join'
+        ? [...alive].reverse() // newest first, so people see their own name land
+        : [...alive].sort((a, z) => Math.hypot(z.x - cx, z.y - cy) - Math.hypot(a.x - cx, a.y - cy));
+    ranked.forEach((b, i) => b.setShortLabel(i >= FULL_NAMES));
+  }
+
+  /** ?safe: shade the areas YouTube's phone player usually covers. */
+  private drawCoveredAreas(): void {
+    const g = this.add.graphics().setDepth(95);
+    for (const c of this.layout.covered) {
+      g.fillStyle(0xff00ff, 0.25).fillRect(c.x, c.y, c.w, c.h);
+      g.lineStyle(4, 0xff00ff, 0.9).strokeRect(c.x, c.y, c.w, c.h);
+      bigText(this, c.x + 12, c.y + 8, `covered: ${c.label}`, 22, '#ff9cff').setDepth(96);
+    }
+  }
+
   private alive(): Ball[] {
     return this.balls.filter((b) => !b.out);
   }
@@ -378,6 +412,10 @@ export class GameScene extends Phaser.Scene implements GameApi {
     }
 
     if (this.phase === 'join' || this.phase === 'fight' || this.phase === 'podium') this.moveBalls(k, now);
+    if (now >= this.nextLabelUpdate) {
+      this.nextLabelUpdate = now + LABEL_UPDATE_MS;
+      this.updateLabels();
+    }
     for (const b of this.balls) if (!b.out) b.sync();
     this.drawArena(now);
   }

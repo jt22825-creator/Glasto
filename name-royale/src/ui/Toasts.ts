@@ -43,7 +43,7 @@ export class Toasts {
     const bg = this.scene.add.graphics().fillStyle(t.color).fillRoundedRect(0, 0, r.w, r.h, 22).lineStyle(6, THEME.outline).strokeRoundedRect(0, 0, r.w, r.h, 22);
     card.add(bg);
     if (vertical) {
-      card.add(bigText(this.scene, r.w / 2, r.h / 2, `${t.title}  ${t.body}`, 36).setOrigin(0.5).setFixedSize(r.w - 30, 0).setAlign('center'));
+      card.add(bigText(this.scene, r.w / 2, r.h / 2, `${t.title}: ${t.body.replace(/\n/g, ' · ')}`, 30).setOrigin(0.5).setFixedSize(r.w - 30, 0).setAlign('center'));
     } else {
       card.add(bigText(this.scene, 24, 22, t.title, 38).setWordWrapWidth(r.w - 48));
       card.add(bigText(this.scene, 24, 120, t.body, 34).setWordWrapWidth(r.w - 48).setLineSpacing(6));

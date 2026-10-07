@@ -72,13 +72,15 @@ npm run sim
 You'll see:
 ```
 [hub] Waiting for the game on ws://localhost:8787
-[game] Landscape: http://localhost:5173/
-[game] Vertical:  http://localhost:5173/?layout=vertical
+[game] Vertical:  http://localhost:5173/
+[game] Landscape: http://localhost:5173/?layout=landscape
 ```
 
 Open <http://localhost:5173/> in Chrome, Edge or Safari. Fake viewers start joining right away.
 
 **Short rounds for testing:** add `?quick` to the address (<http://localhost:5173/?quick>). The join window is then 12 seconds and fights last under a minute.
+
+The game is **vertical (1080x1920) by default**, made for Shorts-style live streams watched on phones. Add `?layout=landscape` for a 1920x1080 version.
 
 **You can also chat yourself.** Click into the terminal window and type a line, then press Enter:
 
@@ -96,6 +98,8 @@ Press **Ctrl+C** to stop everything.
 ## How a round works
 
 1. **Join (45 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
+
+   **Crowded rounds:** when more than 18 balls are alive, only 15 show full names and the rest show initials (e.g. `NG` for NeonGecko). While people are joining, the 15 newest arrivals get full names. During the fight, it's the 15 nearest the edge, because they're the ones about to go.
 2. **Fight.** If fewer than 12 balls joined, bots (`bot_pebble`, `bot_waffle`, …) fill the gap. After 10 seconds the yellow edge starts closing in, and it reaches nothing after another 150 seconds. Any ball whose centre crosses the edge is out. Balls drift towards the middle, so the pack gets squeezed as the arena shrinks. Every 12–20 seconds a chaos event fires:
    - **Shockwave:** a red ring warns you, then everything nearby is blasted outward.
    - **Swirl:** the whole arena spins for a few seconds.
@@ -108,11 +112,12 @@ Rounds take about 3½ minutes in total. The edge always closes completely, so ev
 
 ### Page address options
 
-Add these to the game page's address, e.g. `http://localhost:5173/?layout=vertical&quick`.
+Add these to the game page's address, e.g. `http://localhost:5173/?quick&safe`.
 
 | Option | What it does |
 |---|---|
-| `layout=vertical` | 1080x1920 vertical layout (default is 1920x1080 landscape) |
+| `layout=landscape` | 1920x1080 landscape layout (the default is 1080x1920 vertical) |
+| `safe` | Shades the areas YouTube's phone player usually covers (top bar, buttons on the right, title and chat at the bottom). Use it to check nothing important is hidden. These areas are estimates, so compare with a real Short on your phone. |
 | `quick` | Short rounds, for testing |
 | `log` | Prints elimination timings to the browser console (for tuning) |
 | `debug` | Draws the physics shapes |
@@ -171,11 +176,11 @@ No billing account is needed. The YouTube Data API is free within its daily quot
 1. In OBS, under **Sources**, click **+** and choose **Browser**. Name it `Name Royale`.
 2. Fill in:
 
-   | Setting | Landscape (16:9) | Vertical (9:16) |
+   | Setting | Vertical (9:16, recommended) | Landscape (16:9) |
    |---|---|---|
-   | URL | `http://localhost:5173/` | `http://localhost:5173/?layout=vertical` |
-   | Width | `1920` | `1080` |
-   | Height | `1080` | `1920` |
+   | URL | `http://localhost:5173/` | `http://localhost:5173/?layout=landscape` |
+   | Width | `1080` | `1920` |
+   | Height | `1920` | `1080` |
 
 3. Tick **Use custom frame rate** and set it to `60` (or `30` on an older laptop).
 4. Tick **Control audio via OBS**. Game sounds then show up in the OBS Audio Mixer and go out on the stream.
@@ -192,7 +197,7 @@ If you edit the code, right-click the source and choose **Refresh** (Vite usuall
 
 | Setting (OBS → Settings) | Recommended |
 |---|---|
-| **Video → Base and Output resolution** | `1920x1080` for landscape, or `1080x1920` for vertical |
+| **Video → Base and Output resolution** | `1080x1920` for vertical (type it into the box), or `1920x1080` for landscape |
 | **Video → FPS** | `60` (use `30` if OBS shows dropped or lagged frames) |
 | **Output → Output Mode** | Advanced |
 | **Output → Encoder** | Hardware: *NVIDIA NVENC H.264*, *Apple VT H264 Hardware*, *AMD HW H.264* or *QuickSync H.264*. This leaves the processor free for the game. |
@@ -213,7 +218,7 @@ In **YouTube Studio → Create → Go live → Stream**:
 - **Stream latency: Ultra low-latency.** This keeps the delay between a viewer typing `!join` and seeing their ball as short as possible.
 - **Live chat: on.** Turn **slow mode** off, or set it to a few seconds at most. Set **participant mode** to "Anyone" so new viewers can join in.
 - **Title/description:** say how to play, e.g. *"Type !join in chat to drop your name into the arena!"*
-- **Vertical streams:** set the OBS canvas to 1080x1920 and use `?layout=vertical`. YouTube shows a 9:16 stream as a vertical live stream. Streaming both layouts at once needs an extra OBS plugin, so start with one.
+- **Vertical streams (recommended):** set the OBS canvas to 1080x1920. YouTube treats a 9:16 stream as a vertical live stream, which can be shown to viewers in the Shorts feed. Phone viewers see YouTube's buttons and live chat on top of the bottom and right edges of the picture. The vertical layout keeps those areas free of anything important (check with `?safe`). Streaming both layouts at once needs an extra OBS plugin, so start with vertical.
 
 ---
 
@@ -283,7 +288,7 @@ name-royale/
 │       └── youtube.ts     ← real YouTube chat (Stage 3)
 ├── src/                   ← the game page (runs in OBS)
 │   ├── main.ts
-│   ├── layout.ts          ← 16:9 and 9:16 screen layouts
+│   ├── layout.ts          ← 9:16 and 16:9 screen layouts, and the covered areas
 │   ├── net.ts             ← connects to the server, reconnects automatically
 │   ├── theme.ts           ← colours and fonts
 │   ├── game/

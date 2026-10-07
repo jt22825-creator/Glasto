@@ -75,8 +75,8 @@ if (!args['no-game']) {
   const { createServer } = await import('vite');
   const vite = await createServer({ root: ROOT, logLevel: 'warn' });
   await vite.listen();
-  console.log('[game] Landscape: http://localhost:5173/');
-  console.log('[game] Vertical:  http://localhost:5173/?layout=vertical');
+  console.log('[game] Vertical:  http://localhost:5173/');
+  console.log('[game] Landscape: http://localhost:5173/?layout=landscape');
   console.log('[game] Add &quick to either URL for short rounds while testing.');
 }
 

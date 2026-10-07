@@ -28,6 +28,8 @@ export class Ball {
   private hpTag: Phaser.GameObjects.Text | undefined;
   /** Extra scale used by the drop-in animation (tweened from big to 1). */
   dropScale = 1;
+  /** In crowded rounds, most balls only show initials. */
+  private shortLabel = false;
 
   constructor(scene: Phaser.Scene, viewer: Viewer, isBot: boolean, colour: ColourName, x: number, y: number, radius: number) {
     this.scene = scene;
@@ -83,9 +85,19 @@ export class Ball {
 
   private applyRadius(): void {
     // Big names in normal rounds; a little smaller when the arena is packed.
-    const fontSize = Phaser.Math.Clamp(Math.round(this.radius * 0.8), 22, 38);
+    const full = Phaser.Math.Clamp(Math.round(this.radius * 0.8), 22, 38);
+    const fontSize = this.shortLabel ? Math.max(18, Math.round(full * 0.7)) : full;
     this.label.setFontSize(fontSize);
-    this.label.setStroke(THEME.stroke, Math.max(6, fontSize / 4));
+    this.label.setStroke(THEME.stroke, Math.max(5, fontSize / 4));
+  }
+
+  /** Show the full name, or just initials (used when the arena is crowded). */
+  setShortLabel(short: boolean): void {
+    if (short === this.shortLabel) return;
+    this.shortLabel = short;
+    this.label.setText(short ? initials(this.viewer.name) : this.viewer.name);
+    this.label.setAlpha(short ? 0.75 : 1);
+    this.applyRadius();
   }
 
   setColour(colour: ColourName): void {
@@ -158,4 +170,13 @@ export class Ball {
     this.label.destroy();
     this.hpTag?.destroy();
   }
+}
+
+/** "NeonGecko42" -> "NG", "bot_pebble" -> "BP", "alice" -> "AL". */
+export function initials(name: string): string {
+  const caps = name.match(/[A-Z]/g);
+  if (caps && caps.length >= 2) return caps.slice(0, 2).join('');
+  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return [...name].slice(0, 2).join('').toUpperCase();
 }

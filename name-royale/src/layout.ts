@@ -1,7 +1,8 @@
 // Screen layouts. Everything that depends on screen shape lives here, so the
-// rest of the game code is the same for landscape and vertical.
+// rest of the game code is the same for vertical and landscape.
 //
-// Pick one with the URL: ?layout=landscape (default, 1920x1080) or ?layout=vertical (1080x1920).
+// Vertical (1080x1920) is the default, for YouTube Shorts-style live streams.
+// Use ?layout=landscape for a 1920x1080 stream.
 
 export interface Rect {
   x: number;
@@ -11,7 +12,7 @@ export interface Rect {
 }
 
 export interface Layout {
-  name: 'landscape' | 'vertical';
+  name: 'vertical' | 'landscape';
   width: number;
   height: number;
   arena: { x: number; y: number; radius: number };
@@ -19,14 +20,41 @@ export interface Layout {
   hud: Rect;
   /** "Type !join to play" banner. Always visible. */
   joinBanner: Rect;
-  leaderboard: Rect & { rows: number };
+  bannerFontSize: number;
+  /**
+   * The all-time leaderboard. 'list' is a tall panel (landscape). 'strip' is
+   * a short row of 3 players that pages through the top 9 (vertical).
+   */
+  leaderboard: Rect & { style: 'list' | 'strip'; rows: number };
   /** Recent events (joins, eliminations). */
   feed: Rect & { lines: number };
   /** Pop-up cards for !stats and Super Chat thank-yous. */
   toast: Rect;
-  /** Size of the "Type !join to play" text. */
-  bannerFontSize: number;
+  /**
+   * Areas YouTube's own buttons and text usually cover on a phone. Nothing
+   * important is placed here. These are approximate; view them with ?safe.
+   */
+  covered: (Rect & { label: string })[];
 }
+
+const VERTICAL: Layout = {
+  name: 'vertical',
+  width: 1080,
+  height: 1920,
+  hud: { x: 40, y: 110, w: 1000, h: 180 },
+  joinBanner: { x: 40, y: 305, w: 1000, h: 100 },
+  bannerFontSize: 74,
+  leaderboard: { x: 40, y: 420, w: 1000, h: 150, style: 'strip', rows: 9 },
+  feed: { x: 40, y: 585, w: 1000, h: 60, lines: 1 },
+  toast: { x: 40, y: 585, w: 1000, h: 60 },
+  // Shifted left to keep clear of the like/comment/share buttons on the right.
+  arena: { x: 505, y: 1070, radius: 420 },
+  covered: [
+    { x: 0, y: 0, w: 1080, h: 100, label: 'LIVE badge, close button' },
+    { x: 950, y: 860, w: 130, h: 640, label: 'buttons' },
+    { x: 0, y: 1510, w: 1080, h: 410, label: 'title, channel name and live chat' },
+  ],
+};
 
 const LANDSCAPE: Layout = {
   name: 'landscape',
@@ -35,26 +63,14 @@ const LANDSCAPE: Layout = {
   arena: { x: 960, y: 590, radius: 440 },
   hud: { x: 40, y: 40, w: 400, h: 300 },
   joinBanner: { x: 520, y: 24, w: 880, h: 96 },
-  leaderboard: { x: 1480, y: 40, w: 400, h: 640, rows: 8 },
+  bannerFontSize: 64,
+  leaderboard: { x: 1480, y: 40, w: 400, h: 640, style: 'list', rows: 8 },
   feed: { x: 40, y: 370, w: 400, h: 670, lines: 14 },
   toast: { x: 1480, y: 710, w: 400, h: 330 },
-  bannerFontSize: 64,
-};
-
-const VERTICAL: Layout = {
-  name: 'vertical',
-  width: 1080,
-  height: 1920,
-  arena: { x: 540, y: 950, radius: 480 },
-  hud: { x: 40, y: 40, w: 1000, h: 190 },
-  joinBanner: { x: 60, y: 250, w: 960, h: 110 },
-  leaderboard: { x: 40, y: 1540, w: 1000, h: 340, rows: 5 },
-  feed: { x: 40, y: 380, w: 1000, h: 56, lines: 1 },
-  toast: { x: 90, y: 1440, w: 900, h: 86 },
-  bannerFontSize: 76,
+  covered: [],
 };
 
 export function pickLayout(search = window.location.search): Layout {
   const param = new URLSearchParams(search).get('layout')?.toLowerCase();
-  return param === 'vertical' || param === 'portrait' || param === '9x16' ? VERTICAL : LANDSCAPE;
+  return param === 'landscape' || param === '16x9' ? LANDSCAPE : VERTICAL;
 }
