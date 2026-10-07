@@ -9,11 +9,13 @@ import type { Feed } from '../ui/Feed.ts';
 import type { Toasts } from '../ui/Toasts.ts';
 import type { Viewer } from '../../shared/protocol.ts';
 import { THEME } from '../theme.ts';
+import type { Sfx } from '../audio/Sfx.ts';
 
 /** What the hooks are allowed to do to the game. Add methods here as extras are built. */
 export interface GameApi {
   toasts: Toasts;
   feed: Feed;
+  sfx: Sfx;
   isFighting(): boolean;
   announce(text: string, color: string): void;
   // Ideas for later:
@@ -34,6 +36,7 @@ export class PaidHooks {
    */
   onSuperChat(amountMicros: number, currency: string, viewer: Viewer, tier: number): void {
     const amount = (amountMicros / 1_000_000).toFixed(2).replace(/\.00$/, '');
+    this.game.sfx.chime();
     this.game.toasts.show(`💛 ${clip(viewer.name, 16)}`, `Thanks for the ${currency} ${amount} Super Chat!`, THEME.gold);
     this.game.feed.push(`💛 ${viewer.name} sent a Super Chat`, THEME.textAccent);
     // Example for later:
@@ -43,6 +46,7 @@ export class PaidHooks {
 
   /** Someone became a channel member. */
   onSponsor(viewer: Viewer): void {
+    this.game.sfx.chime();
     this.game.toasts.show(`⭐ ${clip(viewer.name, 16)}`, 'Welcome to the members!', THEME.good);
     this.game.feed.push(`⭐ ${viewer.name} became a member`, THEME.textGood);
   }

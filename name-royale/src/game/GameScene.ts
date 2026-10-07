@@ -2,7 +2,7 @@
 //   join (45s) -> fight (edge shrinks until one ball is left) -> podium (10s) -> countdown (5s) -> join ...
 import Phaser from 'phaser';
 import { DEFAULT_CONFIG, type GameConfig } from '../../shared/config.ts';
-import { defaultColourFor, type ColourName } from '../../shared/palette.ts';
+import { defaultColourFor, PALETTE, type ColourName } from '../../shared/palette.ts';
 import type { ChatCommand, PaidEvent, ServerToGame, Viewer } from '../../shared/protocol.ts';
 import type { Layout } from '../layout.ts';
 import type { Net } from '../net.ts';
@@ -13,7 +13,9 @@ import { LeaderboardPanel } from '../ui/LeaderboardPanel.ts';
 import { Podium } from '../ui/Podium.ts';
 import { bigText, clip } from '../ui/text.ts';
 import { Toasts } from '../ui/Toasts.ts';
+import { Sfx } from '../audio/Sfx.ts';
 import { Ball } from './Ball.ts';
+import { Effects } from './Effects.ts';
 import { pickBotNames } from './bots.ts';
 import { PaidHooks, type GameApi } from './paidEvents.ts';
 
@@ -27,6 +29,8 @@ const CENTRE_PULL = 0.1;
 const MAX_SPEED = 16;
 const BOOST_KICK = 6;
 const QUAKE_KICK = 4;
+/** Speed (pixels per step) at the arena's edge during a swirl. */
+const SWIRL_EDGE_SPEED = 3.5;
 const WINNER_BEAT_MS = 1400; // pause on the winner before the podium appears
 // In crowded rounds only this many balls show full names: during a fight the
 // ones nearest the edge (most at risk), while joining the newest arrivals.
@@ -34,6 +38,9 @@ const WINNER_BEAT_MS = 1400; // pause on the winner before the podium appears
 const FULL_NAMES = 15;
 const ALL_NAMES_UP_TO = 18;
 const LABEL_UPDATE_MS = 400;
+/** Physics runs in fixed steps, so a frame hitch (OBS busy, a slow PC) slows the game briefly instead of flinging balls. */
+const STEP_MS = 1000 / 60;
+const MAX_STEPS_PER_FRAME = 4;
 
 /** `?quick` in the URL shortens every phase, for testing. */
 function quickConfig(c: GameConfig): GameConfig {
@@ -89,6 +96,19 @@ export class GameScene extends Phaser.Scene implements GameApi {
   private statusText!: Phaser.GameObjects.Text;
   private previewTag!: Phaser.GameObjects.Text;
   private paid!: PaidHooks;
+  sfx!: Sfx;
+  private fx!: Effects;
+  private lastTick = -1;
+  /** Physics speed: 1 normally, lower during slow-motion moments. */
+  private timeScale = 1;
+  private stepAccumulator = 0;
+  /**
+   * Simulated time in ms: advances only when the physics steps (and slower in
+   * slow motion). The fight's shrinking edge, timer and chaos events run on
+   * this clock, so if the page stalls, everything pauses together.
+   */
+  private simTime = 0;
+  private fightStart = 0;
 
   constructor(layout: Layout, net: Net, quick: boolean) {
     super('game');
@@ -112,8 +132,22 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.feed = new Feed(this, L);
     this.toasts = new Toasts(this, L);
     this.podium = new Podium(this, L);
+    this.sfx = new Sfx(this.config.audio);
+    const muted = new URLSearchParams(window.location.search).has('mute');
+    if (muted) this.sfx.setMuted(true);
+    this.fx = new Effects(this, L.width, L.height);
     this.paid = new PaidHooks(this);
     this.board.setEntries([]);
+
+    // Soft "bonk" when balls hit each other hard enough.
+    this.matter.world.on('collisionstart', (event: Phaser.Physics.Matter.Events.CollisionStartEvent) => {
+      if (this.phase !== 'fight') return;
+      for (const { bodyA, bodyB } of event.pairs) {
+        if (bodyA.label !== 'ball' || bodyB.label !== 'ball') continue;
+        const rel = Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y);
+        this.sfx.bump(rel / 8);
+      }
+    });
 
     const b = L.joinBanner;
     this.add.graphics().setDepth(50).fillStyle(THEME.accent).fillRoundedRect(b.x, b.y, b.w, b.h, 24).lineStyle(6, THEME.outline).strokeRoundedRect(b.x, b.y, b.w, b.h, 24);
@@ -124,6 +158,15 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.previewTag = bigText(this, 20, L.height - 12, 'PREVIEW · results not saved', 22, THEME.textDim).setOrigin(0, 1).setDepth(90).setVisible(false);
 
     if (new URLSearchParams(window.location.search).has('safe')) this.drawCoveredAreas();
+
+    // A normal browser tab keeps sound off until you click once. (OBS doesn't need this.)
+    const unlock = bigText(this, L.width / 2, L.height - 40, '🔇 Click anywhere for sound', 26, THEME.textDim).setOrigin(0.5, 1).setDepth(90);
+    unlock.setVisible(!muted && this.sfx.blocked);
+    this.input.on('pointerdown', () => {
+      this.sfx.resume();
+      unlock.setVisible(false);
+    });
+    this.time.delayedCall(1000, () => unlock.setVisible(!muted && this.sfx.blocked));
 
     this.net.onState((state) => this.statusText.setText(state === 'open' ? '' : '● waiting for server…'));
     this.net.onMessage((msg) => this.handleServer(msg));
@@ -137,6 +180,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     switch (msg.type) {
       case 'hello':
         this.config = this.quick ? quickConfig(msg.config) : msg.config;
+        this.sfx.setSettings(this.config.audio);
         this.serverNextRound = msg.nextRound;
         this.setPrimary(msg.primary);
         // If nothing has finished on this page yet, adopt the server's round number.
@@ -209,6 +253,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     if (this.byId.has(viewer.id) && this.phase !== 'podium' && this.phase !== 'countdown') return;
     if (this.phase === 'join' && this.balls.length < this.config.round.maxPlayers) {
       this.spawn(viewer, false);
+      this.sfx.join();
       this.feed.push(`${clip(viewer.name, 16)} joined`, THEME.text);
       this.updateRadii();
       return;
@@ -225,6 +270,8 @@ export class GameScene extends Phaser.Scene implements GameApi {
     ball.boostsUsed++;
     const a = Math.random() * Math.PI * 2;
     ball.kick(Math.cos(a) * BOOST_KICK, Math.sin(a) * BOOST_KICK);
+    this.sfx.boost();
+    this.fx.boost(ball.x, ball.y, Math.cos(a), Math.sin(a));
     this.popText(ball.x, ball.y - ball.radius - 50, 'BOOST!', THEME.textGood, 30);
     this.feed.push(`${clip(viewer.name, 16)} boosted!`, THEME.textGood);
   }
@@ -252,6 +299,12 @@ export class GameScene extends Phaser.Scene implements GameApi {
     // "Drop in" from above the camera.
     ball.dropScale = 2.6;
     this.tweens.add({ targets: ball, dropScale: 1, duration: 520, ease: 'Bounce.easeOut' });
+    // Puff of dust when it first touches down (the bounce ease lands about 40% of the way in).
+    this.time.delayedCall(200, () => {
+      if (ball.out) return;
+      this.fx.landing(ball.x, ball.y, ball.radius);
+      if (!isBot || this.phase !== 'join') this.sfx.land();
+    });
     return ball;
   }
 
@@ -341,13 +394,15 @@ export class GameScene extends Phaser.Scene implements GameApi {
     }
     this.setPhase('fight', this.config.arena.shrinkDelaySeconds + this.config.arena.shrinkDurationSeconds);
     const c = this.config.chaos;
-    this.nextChaosAt = this.time.now + Phaser.Math.Between(c.minGapSeconds, c.maxGapSeconds) * 1000;
+    this.fightStart = this.simTime;
+    this.nextChaosAt = this.simTime + Phaser.Math.Between(c.minGapSeconds, c.maxGapSeconds) * 1000;
     this.hud.setPhase('FIGHT!', THEME.textAccent);
     this.announce('FIGHT!', THEME.textAccent);
+    this.sfx.go();
   }
 
   private endRound(winner: Ball): void {
-    if (this.log) console.log(`[round ${this.round}] winner ${winner.viewer.name}, fight lasted ${((this.time.now - this.phaseStart) / 1000).toFixed(1)}s`);
+    if (this.log) console.log(`[round ${this.round}] winner ${winner.viewer.name}, fight lasted ${((this.simTime - this.fightStart) / 1000).toFixed(1)}s`);
     this.setPhase('podium', this.config.round.winnerScreenSeconds);
     this.roundsPlayedHere++;
     this.hud.setPhase('WINNER!', THEME.textAccent);
@@ -366,6 +421,11 @@ export class GameScene extends Phaser.Scene implements GameApi {
 
     // A short beat on the winner, then the podium.
     this.announce(`${clip(winner.viewer.name, 14)} WINS!`, THEME.textAccent);
+    this.sfx.win();
+    this.fx.flash(0xffffff, 0.5, 300);
+    this.slowMo(0.3, 900);
+    const { x: ax, y: ay, radius: aR } = this.layout.arena;
+    this.time.delayedCall(WINNER_BEAT_MS, () => this.fx.confetti(ax, ay - aR, aR * 2));
     this.tweens.add({ targets: winner, dropScale: 1.6, duration: 500, ease: 'Back.easeOut' });
     const places = order.slice(0, 3).map((b) => ({ name: b.viewer.name, colour: b.colour, isBot: b.isBot }));
     this.time.delayedCall(WINNER_BEAT_MS, () => {
@@ -412,6 +472,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.hud.setTimer('');
     this.hud.setAlive('');
     this.bannerText.setText('Thanks for playing!');
+    this.sfx.ending();
 
     const { x, y, radius: R } = this.layout.arena;
     const card = this.add.container(0, 0).setDepth(60);
@@ -423,7 +484,29 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.net.send({ type: 'ended' });
   }
 
+  /** Tick each second for the last 5 seconds of a countdown. */
+  private countdownTick(left: number): void {
+    const s = Math.ceil(left);
+    if (s > 5 || s < 1 || s === this.lastTick) return;
+    this.lastTick = s;
+    this.sfx.tick(s === 1);
+  }
+
+  /** Slow the physics down for a dramatic moment, then speed back up. */
+  private slowMo(scale: number, ms: number): void {
+    const timing = this.matter.world.engine.timing;
+    this.timeScale = scale;
+    timing.timeScale = scale;
+    this.time.delayedCall(ms, () => {
+      this.timeScale = 1;
+      timing.timeScale = 1;
+    });
+  }
+
   private resetArena(): void {
+    this.sfx?.stopHeartbeat();
+    this.sfx?.music.restore();
+    this.lastTick = -1;
     this.finalTwo = false;
     this.swirl.until = 0;
     this.tweens.killTweensOf(this.vignette);
@@ -441,17 +524,17 @@ export class GameScene extends Phaser.Scene implements GameApi {
 
   update(_time: number, delta: number): void {
     const now = this.time.now;
-    const k = Math.min(3, delta / (1000 / 60));
     const left = (this.phaseEnd - now) / 1000;
 
     switch (this.phase) {
       case 'join':
         this.hud.setTimer(left, left <= 10);
         this.hud.setAlive(`${this.balls.length} / ${this.config.round.maxPlayers} joined`);
+        this.countdownTick(left);
         if (left <= 0) this.startFight();
         break;
       case 'fight':
-        this.updateFight(now);
+        this.updateFight(this.simTime);
         break;
       case 'podium': {
         this.hud.setTimer('');
@@ -466,11 +549,23 @@ export class GameScene extends Phaser.Scene implements GameApi {
       case 'countdown':
         this.hud.setTimer(left);
         this.bigCountdown.setText(String(Math.max(1, Math.ceil(left))));
+        this.countdownTick(left);
         if (left <= 0) this.startJoin();
         break;
     }
 
-    if (this.phase === 'join' || this.phase === 'fight' || this.phase === 'podium') this.moveBalls(k, now);
+    // Fixed physics steps: the same speed at 30 or 60 fps, and no huge jumps after a hitch.
+    const moving = this.phase === 'join' || this.phase === 'fight' || this.phase === 'podium';
+    this.stepAccumulator += Math.min(delta, 250);
+    let steps = 0;
+    while (this.stepAccumulator >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
+      if (moving) this.moveBalls(this.timeScale, this.simTime);
+      this.matter.world.step(STEP_MS);
+      this.simTime += STEP_MS * this.timeScale;
+      this.stepAccumulator -= STEP_MS;
+      steps++;
+    }
+    if (steps === MAX_STEPS_PER_FRAME) this.stepAccumulator = 0; // too far behind: drop the backlog
     if (now >= this.nextLabelUpdate) {
       this.nextLabelUpdate = now + LABEL_UPDATE_MS;
       this.updateLabels();
@@ -481,7 +576,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
 
   private updateFight(now: number): void {
     const { shrinkDelaySeconds: delay, shrinkDurationSeconds: duration } = this.config.arena;
-    const elapsed = (now - this.phaseStart) / 1000;
+    const elapsed = (now - this.fightStart) / 1000;
     const progress = Phaser.Math.Clamp((elapsed - delay) / duration, 0, 1);
     this.arenaR = this.layout.arena.radius * (1 - progress);
 
@@ -515,10 +610,15 @@ export class GameScene extends Phaser.Scene implements GameApi {
   private eliminate(ball: Ball): void {
     const place = this.alive().length;
     this.eliminated.push(ball);
+    const big = place <= 4;
+    this.fx.elimination(ball.x, ball.y, PALETTE[ball.colour], big);
+    this.sfx.eliminate(big);
+    this.cameras.main.shake(big ? 320 : 160, big ? 0.009 : 0.004);
+    if (!ball.isBot) this.popText(ball.x, ball.y - ball.radius - 30, 'OUT!', THEME.textDanger, big ? 44 : 32);
     ball.eliminate();
     this.feed.push(`${clip(ball.viewer.name, 16)} out #${place}`, ball.isBot ? THEME.textDim : THEME.textDanger);
     if (this.log) {
-      const t = (this.time.now - this.phaseStart) / 1000;
+      const t = (this.simTime - this.fightStart) / 1000;
       console.log(`[elim] t=${t.toFixed(1)}s edge=${(this.arenaR / this.layout.arena.radius).toFixed(2)} place=${place}`);
     }
   }
@@ -528,6 +628,9 @@ export class GameScene extends Phaser.Scene implements GameApi {
     this.hud.setPhase('FINAL TWO', THEME.textDanger);
     this.announce('FINAL TWO!', THEME.textDanger);
     for (const b of pair) b.showHp();
+    this.sfx.finalTwo();
+    this.fx.flash(THEME.danger, 0.35, 400);
+    this.slowMo(0.35, 1200);
     this.vignette.setAlpha(0.15);
     this.tweens.add({ targets: this.vignette, alpha: 0.45, yoyo: true, repeat: -1, duration: 500, ease: 'Sine.easeInOut' });
   }
@@ -558,8 +661,17 @@ export class GameScene extends Phaser.Scene implements GameApi {
         ay += (dy / d) * push;
       }
       if (swirling) {
-        ax += (-dy / d) * 0.22 * this.swirl.dir;
-        ay += (dx / d) * 0.22 * this.swirl.dir;
+        // Turn the pack like a spinning platter: nudge each ball's sideways
+        // speed towards a target (faster further out) instead of piling on
+        // speed, which would fling everyone off at once.
+        const tx = (-dy / d) * this.swirl.dir;
+        const ty = (dx / d) * this.swirl.dir;
+        const v = b.body.velocity;
+        const current = v.x * tx + v.y * ty;
+        const target = (SWIRL_EDGE_SPEED / Math.max(R, R0 * 0.2)) * d * this.chaosStrength();
+        const dv = (target - current) * 0.06;
+        ax += tx * dv;
+        ay += ty * dv;
       }
       b.kick(ax * k, ay * k);
 
@@ -572,19 +684,33 @@ export class GameScene extends Phaser.Scene implements GameApi {
   // ---------------------------------------------------------------- chaos events
 
   private chaosEvent(): void {
-    const pick = Phaser.Math.Between(0, 2);
+    // ?chaos=shockwave|swirl|quake forces one kind, for testing.
+    const forced = ['shockwave', 'swirl', 'quake'].indexOf(new URLSearchParams(window.location.search).get('chaos') ?? '');
+    const pick = forced >= 0 ? forced : Phaser.Math.Between(0, 2);
+    if (this.log) console.log(`[chaos] t=${((this.simTime - this.fightStart) / 1000).toFixed(1)}s ${['shockwave', 'swirl', 'quake'][pick]}`);
     if (pick === 0) this.shockwave();
     else if (pick === 1) {
-      this.swirl = { until: this.time.now + 3500, dir: Math.random() < 0.5 ? -1 : 1 };
+      this.swirl = { until: this.simTime + 3500, dir: Math.random() < 0.5 ? -1 : 1 };
       this.announce('SWIRL!', THEME.textGood);
+      this.sfx.swirl();
     } else {
+      const strength = this.chaosStrength();
       this.announce('QUAKE!', THEME.textAccent);
-      this.cameras.main.shake(400, 0.006);
+      this.sfx.quake();
+      this.cameras.main.shake(500, 0.008);
       for (const b of this.alive()) {
         const a = Math.random() * Math.PI * 2;
-        b.kick(Math.cos(a) * QUAKE_KICK, Math.sin(a) * QUAKE_KICK);
+        b.kick(Math.cos(a) * QUAKE_KICK * strength, Math.sin(a) * QUAKE_KICK * strength);
       }
     }
+  }
+
+  /**
+   * Chaos gets gentler as the arena shrinks. A full-strength blast in a small
+   * arena would knock out the whole pack at once and end the round early.
+   */
+  private chaosStrength(): number {
+    return 0.45 + 0.55 * (this.arenaR / this.layout.arena.radius);
   }
 
   /** Warn with a pulsing ring, then blast every ball nearby away from that spot. */
@@ -596,6 +722,7 @@ export class GameScene extends Phaser.Scene implements GameApi {
     const py = cy + Math.sin(a) * d;
     const range = R0 * 0.75;
     this.announce('SHOCKWAVE!', THEME.textDanger);
+    this.sfx.warn();
 
     const warn = this.add.circle(px, py, 40).setStrokeStyle(10, THEME.danger).setDepth(5);
     this.tweens.add({ targets: warn, scale: 1.6, alpha: 0.3, yoyo: true, repeat: 2, duration: 150 });
@@ -604,13 +731,15 @@ export class GameScene extends Phaser.Scene implements GameApi {
       if (this.phase !== 'fight') return;
       const ring = this.add.circle(px, py, 30).setStrokeStyle(14, THEME.danger).setDepth(5);
       this.tweens.add({ targets: ring, radius: range, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
-      this.cameras.main.shake(250, 0.008);
+      this.cameras.main.shake(300, 0.01);
+      this.sfx.shockwave();
+      this.fx.flash(THEME.danger, 0.18, 250);
       for (const b of this.alive()) {
         const dx = b.x - px;
         const dy = b.y - py;
         const dist = Math.max(1, Math.hypot(dx, dy));
         if (dist > range) continue;
-        const f = 7 * (1 - dist / range) + 1;
+        const f = (5 * (1 - dist / range) + 1) * this.chaosStrength();
         b.kick((dx / dist) * f, (dy / dist) * f);
       }
     });

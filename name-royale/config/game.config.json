@@ -38,6 +38,11 @@
     "costStreamResponse": 1,
     "costLookup": 1
   },
+  "audio": {
+    "sfxVolume": 0.8,
+    "musicVolume": 0.35,
+    "music": true
+  },
   "ending": {
     "endShowWhenQuotaRunsOut": true,
     "endCardSeconds": 30,

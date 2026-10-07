@@ -2,7 +2,7 @@
 
 A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat and a ball with their name drops into a round arena. The edge slowly shrinks, balls get knocked off, and the last ball left wins.
 
-> **Status: Stage 4 (saved leaderboard).** The game runs with the simulator or your stream's live chat. Wins, rounds, streaks, colour choices and the round number are saved to disk. Next: Stage 5 polish (sound, particles, screen shake).
+> **Status: all 5 stages built.** The game runs with the simulator or your stream's live chat, with a saved leaderboard, sound, music and effects.
 
 ## Roadmap
 
@@ -10,7 +10,7 @@ A "chat plays" game for YouTube live streams. Viewers type `!join` in live chat 
 - [x] **Stage 2:** the game itself (rounds, physics, shrinking arena, bots, podium), driven by the simulator
 - [x] **Stage 3:** real YouTube live chat
 - [x] **Stage 4:** leaderboard saved to disk, plus ending the show (end card, OBS stop)
-- [ ] **Stage 5:** polish: sound, particles, screen shake, final vertical layout
+- [x] **Stage 5:** polish: sound, music, particles, screen shake, slow motion, vertical-first layout
 
 ---
 
@@ -97,6 +97,30 @@ The game is **vertical (1080x1920) by default**, made for Shorts-style live stre
 
 Press **Ctrl+C** to stop everything.
 
+## Sound and effects
+
+All sound is **generated in code** (Web Audio), so there are no audio files and no licences to worry about.
+
+| Moment | Sound | Visuals |
+|---|---|---|
+| `!join` | Two-note blip | Ball drops in with a bounce and a dust puff |
+| Countdown, last 5 s | Ticks, with a higher last tick | Timer turns red |
+| Fight starts | Short horn | "FIGHT!" |
+| Balls collide | Soft bonks, louder for harder hits | |
+| `!boost` | Whoosh | Spray of sparks |
+| Shockwave / swirl / quake | Warning beeps then a boom / a rising whoosh / a rumble | Red ring, flash, screen shake |
+| Elimination | Falling "bloop" with a crunch (heavier for the last few) | Burst in the ball's colour, ring, "OUT!" for real viewers, shake |
+| Final two | Heavy hit, then a heartbeat, music drops away | Red flash, a moment of slow motion, pulsing red edges, ♥ 1 HP tags |
+| Winner | Fanfare | White flash, slow motion, confetti, podium |
+| Super Chat / new member | Bell chime | Thank-you card |
+| End of show | Music fades out | End card |
+
+There's also a light **looping music track**. Turn it off with `audio.music: false` if you play your own music in OBS. Volumes are `audio.sfxVolume` and `audio.musicVolume` (0 to 1).
+
+- **In OBS** sound plays straight away. Tick **Control audio via OBS** on the Browser Source (section 4) so it goes out on the stream and shows in the Audio Mixer.
+- **In a normal browser tab** the browser blocks sound until you click the page once. The page shows "🔇 Click anywhere for sound" until you do.
+- Add `?mute` to the page address to silence it, e.g. for a second preview tab.
+
 ## How a round works
 
 1. **Join (45 s).** Each `!join` drops a ball into the arena. Balls get smaller as more people join, so a busy round still fits. A soft wall keeps everyone in while people are still joining.
@@ -119,10 +143,12 @@ Add these to the game page's address, e.g. `http://localhost:5173/?quick&safe`.
 | Option | What it does |
 |---|---|
 | `layout=landscape` | 1920x1080 landscape layout (the default is 1080x1920 vertical) |
+| `mute` | No sound (handy for a preview tab next to OBS) |
 | `safe` | Shades the areas YouTube's phone player usually covers (top bar, buttons on the right, title and chat at the bottom). Use it to check nothing important is hidden. These areas are estimates, so compare with a real Short on your phone. |
 | `quick` | Short rounds, for testing |
 | `log` | Prints elimination timings to the browser console (for tuning) |
 | `debug` | Draws the physics shapes |
+| `chaos=swirl` | Only that chaos event (`shockwave`, `swirl` or `quake`), for testing |
 | `ws=ws://host:port` | Connect to a server on a different port or machine |
 
 ### Only one screen counts
@@ -348,6 +374,9 @@ Edit `config/game.config.json` and restart the server. Missing or mistyped setti
 | `youtube.saverPollSeconds` | 12 | Poll interval in slow-polling mode |
 | `youtube.quotaStopFraction` | 0.95 | Stop reading chat above this fraction of the quota |
 | `youtube.costListCall` / `costStreamOpen` / `costStreamResponse` / `costLookup` | 5 / 1 / 1 / 1 | Estimated quota cost of each kind of call. See [Quota](#quota). |
+| `audio.sfxVolume` | 0.8 | Sound effects volume, 0 to 1 |
+| `audio.musicVolume` | 0.35 | Music volume, 0 to 1 |
+| `audio.music` | true | Play the looping background music |
 | `ending.endShowWhenQuotaRunsOut` | true | When the YouTube quota runs out, end the show (see [Ending the show](#ending-the-show)) |
 | `ending.endCardSeconds` | 30 | How long the "Thanks for playing!" card shows before the stream stops |
 | `ending.stopObsStream` | true | Ask OBS to stop streaming at the end |
@@ -399,8 +428,12 @@ name-royale/
 │   ├── layout.ts          ← 9:16 and 16:9 screen layouts, and the covered areas
 │   ├── net.ts             ← connects to the server, reconnects automatically
 │   ├── theme.ts           ← colours and fonts
+│   ├── audio/
+│   │   ├── Sfx.ts         ← all sound effects (synthesised)
+│   │   └── Music.ts       ← the looping music track
 │   ├── game/
 │   │   ├── GameScene.ts   ← the round loop, physics and chaos events
+│   │   ├── Effects.ts     ← particles, flashes, confetti
 │   │   ├── Ball.ts        ← one player's ball
 │   │   ├── bots.ts        ← bot names
 │   │   └── paidEvents.ts  ← onSuperChat / onSponsor hooks for later extras

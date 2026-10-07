@@ -66,6 +66,14 @@ export interface GameConfig {
     /** Estimated quota cost of looking up your channel, broadcast or video. */
     costLookup: number;
   };
+  audio: {
+    /** Sound effects volume, 0 to 1. */
+    sfxVolume: number;
+    /** Background music volume, 0 to 1. */
+    musicVolume: number;
+    /** Play the looping background music. Turn off if you play your own music in OBS. */
+    music: boolean;
+  };
   ending: {
     /** When the YouTube quota runs out: finish the round, show the end card, then stop the stream. */
     endShowWhenQuotaRunsOut: boolean;
@@ -123,6 +131,11 @@ export const DEFAULT_CONFIG: GameConfig = {
     costStreamOpen: 1,
     costStreamResponse: 1,
     costLookup: 1,
+  },
+  audio: {
+    sfxVolume: 0.8,
+    musicVolume: 0.35,
+    music: true,
   },
   ending: {
     endShowWhenQuotaRunsOut: true,
