@@ -1,5 +1,5 @@
 // The whole game loop:
-//   join (45s) -> fight (edge shrinks until one ball is left) -> podium (10s) -> countdown (5s) -> join ...
+//   join (25s) -> fight (edge shrinks until one ball is left) -> podium (10s) -> countdown (5s) -> join ...
 import Phaser from 'phaser';
 import { DEFAULT_CONFIG, type GameConfig } from '../../shared/config.ts';
 import { defaultColourFor, PALETTE, type ColourName } from '../../shared/palette.ts';
